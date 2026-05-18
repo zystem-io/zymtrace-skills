@@ -1,0 +1,80 @@
+# Expose the zymtrace gateway via AWS ALB Ingress.
+#
+# Defaults: HTTPS-required, internal scheme. ALB-on-zymtrace is HTTPS only —
+# HTTP-only ALB is not an acceptable production exposure.
+#
+# Prerequisites:
+#   - EKS cluster with the AWS Load Balancer Controller installed
+#     (`kubectl get deploy -n kube-system aws-load-balancer-controller`).
+#   - `alb` IngressClass exists (`kubectl get ingressclass alb`).
+#   - An ACM certificate in the same region as the cluster
+#     (`aws acm list-certificates --region <region>`).
+#
+# Apply on top of your existing values file:
+#   helm upgrade --install <REL> zymtrace/backend \
+#     --namespace <NS> \
+#     -f <your-original-values>.yaml \
+#     -f ingress-alb.yaml \
+#     --reset-then-reuse-values --atomic --debug
+#
+# ⚠ THE KEY GOTCHA (do not change without reading)
+#
+# ALB target groups configured as GRPC reject HTTP/1.1 clients with HTTP 464.
+# The gateway speaks both HTTP/1.1 (UI, health checks) and gRPC (profiler agents),
+# multiplexed by Envoy on one listener. Use `backend-protocol: HTTP` +
+# `backend-protocol-version: HTTP2` — NOT GRPC.
+
+services:
+  gateway:
+    service:
+      type: ClusterIP   # ALB targets pods directly via target-type=ip
+
+ingress:
+  enabled: true
+  className: "alb"
+
+  annotations:
+    # ----- Scheme: internal by default -----
+    # For internet-facing exposure, change to: internet-facing
+    alb.ingress.kubernetes.io/scheme: internal
+
+    # ----- Target type (required on EKS) -----
+    alb.ingress.kubernetes.io/target-type: ip
+
+    # ----- Backend protocol (THE important pair — see header) -----
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/backend-protocol-version: HTTP2
+
+    # ----- Listeners — HTTPS required, redirect HTTP→HTTPS -----
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+
+    # ----- ACM certificate (REQUIRED) — same region as the EKS cluster -----
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:REGION:ACCOUNT:certificate/CERT_ID
+
+    # ----- Health checks -----
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+
+    # ----- Optional -----
+    # alb.ingress.kubernetes.io/tags: Environment=production,Team=platform
+    # alb.ingress.kubernetes.io/subnets: subnet-aaaa,subnet-bbbb     # if not auto-discovered
+    # alb.ingress.kubernetes.io/security-groups: sg-aaaa             # custom SGs
+
+  hosts:
+    gateway:
+      enabled: true
+      host: ""               # leave empty for direct ALB DNS access; set when using a private Route53 record
+      paths:
+        - path: /
+          pathType: Prefix
+
+  # TLS is terminated at the ALB via ACM — no in-cluster TLS secret needed.
+  tls: []
+
+# NOTE: AWS ALB does not support SSL passthrough — mTLS for agents requires NGINX, not ALB.
+# See ../reference.md § mTLS.

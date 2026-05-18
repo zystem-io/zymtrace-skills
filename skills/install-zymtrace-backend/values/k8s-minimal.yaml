@@ -1,0 +1,47 @@
+# Minimal Helm values for zymtrace backend on Kubernetes.
+#
+# Use case: dev / PoC / quick demo on a single cluster.
+# Characteristics:
+#   - All databases (ClickHouse, Postgres, MinIO) created in-cluster on PVCs.
+#   - Gateway exposed via NodePort (no ingress, no TLS).
+#   - Auth disabled — open access.
+#   - No HPA, no mTLS, no AI assistant.
+#
+# Install:
+#   helm upgrade --install backend zymtrace/backend \
+#     --namespace zymtrace --create-namespace \
+#     -f k8s-minimal.yaml \
+#     --reset-then-reuse-values --atomic --debug
+#
+# Then access the UI on http://<any-node-ip>:32080
+
+global:
+  # If you have a license key, paste it here. Free tier works without one.
+  # For production, use a Kubernetes secret instead — see k8s-ingress-tls.yaml.
+  licenseKey: ""
+  dataRetentionDays: 7  # short retention for dev
+
+services:
+  # No metrics-server assumed; keep HPA off.
+  common:
+    hpa:
+      enabled: false
+  gateway:
+    service:
+      type: NodePort
+      nodePort: "32080"
+
+# All in-cluster — defaults are fine. PVCs will be ~70Gi total.
+clickhouse:
+  mode: "create"
+postgres:
+  mode: "create"
+storage:
+  mode: "create"
+
+# No ingress / no TLS — agents must use --disable-tls when targeting the gateway.
+ingress:
+  enabled: false
+
+auth:
+  type: "none"

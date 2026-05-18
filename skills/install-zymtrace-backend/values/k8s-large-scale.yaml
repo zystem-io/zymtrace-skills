@@ -1,0 +1,126 @@
+# zymtrace backend on Kubernetes — large-scale production sizing.
+#
+# Use case: ~100+ profiler agents, mixed CPU + GPU profiling, 30+ day retention.
+# Pattern distilled from real commercial deployments running this workload shape.
+#
+# Key sizing dimensions:
+#   - Agent count   → drives ingest replicas + ClickHouse write throughput.
+#   - Retention     → drives ClickHouse storage (rule of thumb: ~5Gi/agent/30d for mixed CPU+GPU).
+#   - GPU/CPU mix   → GPU agents produce ~5–8x more events than CPU-only.
+#
+# Combine with k8s-external-dbs.yaml if you already run managed ClickHouse/Postgres/S3 —
+# at this scale, externalising ClickHouse is the most common next step beyond what this file provides.
+
+global:
+  licenseKeySecretName: "zymtrace-license"
+  licenseKeySecretKey: "license-key"
+  dataRetentionDays: 30                 # match your compliance / cost target
+
+# -------- ClickHouse (the hot path — almost everything else is small in comparison)
+clickhouse:
+  mode: "create"
+  create:
+    resources:
+      requests:
+        cpu: "2000m"
+        memory: "4Gi"
+      limits:
+        cpu: "6000m"
+        memory: "16Gi"                  # CH benefits from headroom on aggregation queries
+    storage:
+      type: "persistent"
+      size: 500Gi                       # ~30 days @ ~100 agents mixed CPU+GPU; scale linearly
+      className: ""                     # set to your fast SSD class (e.g. gp3, premium-rwo)
+    healthProbes:
+      liveness:
+        initialDelaySeconds: 180        # CH boot under load is slow — don't let liveness kill it
+        timeoutSeconds: 10
+      readiness:
+        initialDelaySeconds: 120
+        timeoutSeconds: 10
+
+# -------- Postgres (small — identity + symdb metadata only)
+postgres:
+  mode: "create"
+  create:
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
+    storage:
+      type: "persistent"
+      size: 50Gi
+      className: ""
+
+# -------- Object storage (symbols — grows with binary diversity, not agent count)
+storage:
+  mode: "create"
+  create:
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+    storage:
+      type: "persistent"
+      size: 100Gi
+      className: ""
+    healthProbes:
+      liveness:
+        initialDelaySeconds: 120
+        timeoutSeconds: 10
+      readiness:
+        initialDelaySeconds: 90
+        timeoutSeconds: 10
+
+# -------- Services — autoscaled, with resource bumps for the hot path
+services:
+  common:
+    imageTag: ""                        # pin a version, do NOT leave empty in prod
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+      targetMemoryUtilizationPercentage: 80
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 180   # avoid scale thrashing on traffic dips
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+
+  ingest:                               # hot path — every agent sample lands here
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "1Gi"
+
+  web:                                  # serves UI + API queries; bumps with concurrent users
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "1Gi"
+
+  symdb:                                # symbol lookups during query rendering
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+
+  gateway:                              # Envoy front door — also benefits from a CPU bump under load
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "512Mi"
+
+# -------- Auth: enable in prod. None shown here because it varies by org —
+# layer in the `auth:` block from k8s-ingress-tls.yaml (OIDC) or use `local` with a secret-backed admin.
+auth:
+  type: "none"                          # ← REPLACE for production

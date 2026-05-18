@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Editor / IDE
+*.swp
+*.swo
+*~
+.vscode/
+
+
+# Helm
+*.tgz
+helm-debug.log
+
+# Working files customers / scripts produce locally
+zymtrace-custom-values.yaml
+zymtrace-profiler-values.yaml
+*.values.local.yaml
+current-values.yaml
+
+# Backups
+*.bak
+*.orig

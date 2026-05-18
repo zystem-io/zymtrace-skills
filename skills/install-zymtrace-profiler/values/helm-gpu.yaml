@@ -1,0 +1,57 @@
+# GPU profiler agent — Helm values for the zymtrace profiler chart.
+#
+# REQUIRES CUDA 12.x OR HIGHER. CUDA 11.x and below are not supported.
+# Architecture: AMD64/x86_64 and ARM64 are both supported.
+#
+# Use case: profile CUDA workloads (training + inference) plus collect GPU metrics
+# (utilization, memory, temperature, SM efficiency, Tensor Core, PCIe throughput).
+# Also enables framework-specific metrics: vLLM, SGLang, NVIDIA Dynamo-Triton.
+#
+# Install:
+#   helm upgrade --install profiler zymtrace/profiler \
+#     --namespace zymtrace --create-namespace \
+#     -f zymtrace-profiler-values.yaml \
+#     --reset-then-reuse-values --atomic --debug
+#
+# After install, profile your workload: see the "Profiling real workloads"
+# section of reference.md for training and inference env-var/mount setup.
+
+global:
+  ClusterMetadata:
+    cluster_id: ""   # e.g. "prod-eks-us-west-2"
+
+profiler:
+  # Deploy the CUDA profiler library to host path /var/lib/zymtrace/profiler.
+  # Workloads mount that path and set CUDA_INJECTION64_PATH to enable per-process profiling.
+  cudaProfiler:
+    enabled: true
+
+  args:
+    - "-collection-agent=zymtrace-gateway.zymtrace.svc.cluster.local:80"
+    - "-disable-tls"   # remove if pointing at external HTTPS endpoint
+
+    # GPU metrics — utilization, memory, temperature, SM efficiency, Tensor Core, PCIe.
+    - "--enable-gpu-metrics"
+
+    # Auto-detect the NVML library path. Recommended for first install; once you know
+    # the path the profiler discovered, switch to --nvml-path=<path> for production.
+    - "--nvml-auto-scan"
+
+    # Framework metrics — automatic collection for these inference servers when present.
+    # All default to true in the agent; listed here for visibility / explicit disable.
+    # - "--enable-vllm-metrics"
+    # - "--enable-sglang-metrics"
+    # - "--enable-triton-metrics"
+
+    # Optional: tags for filtering. Format: key:value;key:value
+    # - "-tags=env:prod;gpu:h100"
+
+  # Schedule only on GPU nodes (recommended — CPU nodes don't need the CUDA profiler).
+  nodeSelector:
+    nvidia.com/gpu: "true"
+
+  # Tolerate the standard NVIDIA GPU taint (chart default already includes this).
+  # tolerations:
+  #   - key: "nvidia.com/gpu"
+  #     operator: "Exists"
+  #     effect: "NoSchedule"

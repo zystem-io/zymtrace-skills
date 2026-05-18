@@ -1,0 +1,12 @@
+{
+  "name": "zymtrace",
+  "description": "Install, upgrade, expose, and troubleshoot zymtrace — the AI optimization platform for continuous CPU and GPU profiling.",
+  "version": "26.5.0",
+  "author": {
+    "name": "Zymtrace",
+    "email": "support@zymtrace.com",
+    "url": "https://zymtrace.com"
+  },
+  "homepage": "https://zymtrace.com",
+  "repository": "https://github.com/zystem-io/zymtrace-skills"
+}

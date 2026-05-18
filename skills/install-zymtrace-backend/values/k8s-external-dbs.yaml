@@ -1,0 +1,108 @@
+# zymtrace backend on Kubernetes — using external databases.
+#
+# Use case: production / staging where the org already runs managed ClickHouse,
+# Postgres, and object storage (S3/GCS/MinIO).
+#
+# Pick ONE block per database (replace placeholders, delete the rest).
+# Reference: https://docs.zymtrace.com/install/backend/config-storage
+#
+# Install:
+#   helm upgrade --install backend zymtrace/backend \
+#     --namespace zymtrace --create-namespace \
+#     -f k8s-external-dbs.yaml \
+#     --reset-then-reuse-values --atomic --debug
+
+global:
+  # Recommended: reference a pre-created secret instead of inlining the key.
+  # kubectl create secret generic zymtrace-license -n zymtrace \
+  #   --from-literal=license-key="<your-key>"
+  licenseKeySecretName: "zymtrace-license"
+  licenseKeySecretKey: "license-key"
+  dataRetentionDays: 30
+
+# -------- ClickHouse --------
+# IMPORTANT: host MUST include scheme + HTTP port (8123 / 8443). Native 9000 is NOT supported.
+clickhouse:
+  mode: "use_existing"
+  use_existing:
+    host: "https://clickhouse.example.com:8443"
+    user: "zymtrace"
+    # Recommended: passwordSecretName instead of inline password.
+    passwordSecretName: "clickhouse-creds"
+    passwordSecretKey: "password"
+    database: "zymtrace"  # prefix → creates zymtrace_profiling, zymtrace_metrics
+    # clusterName: "zymtrace_cluster"   # only for sharded ClickHouse clusters
+    autoCreateDBs: false  # set true only if the user has CREATE DATABASE privilege
+
+# -------- Postgres -------- (pick ONE of the three blocks)
+postgres:
+  # ---- (a) Plain external Postgres / RDS / Cloud SQL with password
+  mode: "use_existing"
+  use_existing:
+    host: "postgres.example.com:5432"
+    user: "zymtrace"
+    passwordSecretName: "postgres-creds"
+    passwordSecretKey: "password"
+    database: "zymtrace"  # prefix → creates zymtrace_identity, zymtrace_symdb
+    secure: true          # TLS required by most managed Postgres
+    autoCreateDBs: false
+
+  # ---- (b) AWS Aurora with IAM auth (uncomment + delete block above)
+  # mode: "aws_aurora"
+  # aws_aurora:
+  #   host: "zymtrace.cluster-xyz.us-west-2.rds.amazonaws.com"
+  #   user: "zymtrace_iam_user"     # must have rds_iam role
+  #   database: "zymtrace"
+  #   region: "us-west-2"
+  #   serviceAccount: "zymtrace-aurora-sa"   # IRSA-annotated SA (pre-created)
+
+  # ---- (c) GCP Cloud SQL with Workload Identity (uncomment + delete blocks above)
+  # mode: "gcp_cloudsql"
+  # gcp_cloudsql:
+  #   instance: "my-project:us-central1:zymtrace-pg"
+  #   user: "zt-db@my-project.iam"           # omit .gserviceaccount.com
+  #   database: "zymtrace"
+  #   workloadIdentity:
+  #     enabled: true
+  #   serviceAccount: "zymtrace-cloudsql-sa"
+
+# -------- Object storage -------- (pick ONE)
+storage:
+  mode: "use_existing"
+  use_existing:
+    # ---- (a) AWS S3
+    type: "s3"
+    s3:
+      region: "us-west-2"
+      accessKeySecretName: "s3-creds"
+      accessKeySecretKey: "access-key"
+      secretKeySecretName: "s3-creds"
+      secretKeySecretKey: "secret-key"
+      # OR for IAM-based auth on EKS — comment out the keys above and use:
+      # useIAM: "aws"
+      # serviceAccount: "zymtrace-s3-sa"
+    # ---- (b) External MinIO (uncomment, set type: "minio", delete s3 block)
+    # type: "minio"
+    # minio:
+    #   endpoint: "http://minio.storage.svc.cluster.local:9000"
+    #   user: "minio"
+    #   passwordSecretName: "minio-creds"
+    #   passwordSecretKey: "password"
+    # ---- (c) GCS via HMAC keys (uncomment, set type: "gcs")
+    # type: "gcs"
+    # gcs:
+    #   accessKeySecretName: "gcs-creds"
+    #   accessKeySecretKey: "access-key"
+    #   secretKeySecretName: "gcs-creds"
+    #   secretKeySecretKey: "secret-key"
+
+# Reasonable production defaults — HPA on, NetworkPolicies on.
+services:
+  activateNetworkPolicies: true
+  common:
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80

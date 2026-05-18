@@ -1,0 +1,29 @@
+# NodePort exposure for the zymtrace gateway.
+#
+# Use case: PoC, on-prem clusters without a cloud load balancer, quick external access.
+# NOT a production exposure pattern — there's no TLS termination and no DNS-friendly endpoint.
+# For production, use ingress (NGINX or ALB).
+#
+# Apply on top of your existing values file:
+#   helm upgrade --install <REL> zymtrace/backend \
+#     --namespace <NS> \
+#     -f <your-original-values>.yaml \
+#     -f nodeport.yaml \
+#     --reset-then-reuse-values --atomic --debug
+#
+# Then access via:
+#   http://<any-node-ip>:32080
+
+services:
+  gateway:
+    service:
+      type: NodePort
+      nodePort: "32080"   # range 30000-32767; change if collision
+
+# If auth.type is "oidc", you must also set the redirectUri explicitly here
+# (the chart can't auto-derive it when there's no ingress host):
+#
+# auth:
+#   oidc:
+#     provider:
+#       redirectUri: "http://<node-ip>:32080/api/v1/oauth2/callback"

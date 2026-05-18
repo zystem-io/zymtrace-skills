@@ -1,0 +1,70 @@
+# Expose the zymtrace gateway via NGINX Ingress with cert-manager TLS.
+#
+# Prerequisites:
+#   - NGINX Ingress Controller installed (`kubectl get ingressclass nginx`).
+#   - cert-manager installed with a ClusterIssuer named "letsencrypt-prod"
+#     (or swap to your own issuer / pre-existing TLS secret).
+#   - DNS A-record pointing zymtrace.example.com to the ingress LB IP.
+#
+# Apply on top of your existing values file:
+#   helm upgrade --install <REL> zymtrace/backend \
+#     --namespace <NS> \
+#     -f <your-original-values>.yaml \
+#     -f ingress-nginx.yaml \
+#     --reset-then-reuse-values --atomic --debug
+
+ingress:
+  enabled: true
+  className: "nginx"
+
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+  hosts:
+    gateway:
+      enabled: true
+      host: "zymtrace.example.com"   # ← change me; DNS must point at the NGINX LB
+      paths:
+        - path: /
+          pathType: Prefix
+      annotations:
+        # gRPC is REQUIRED — the profiler agent uses gRPC to ingest profiles.
+        nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+        # Allow large payloads for symbol uploads — REQUIRED.
+        nginx.ingress.kubernetes.io/proxy-body-size: "0"
+        nginx.ingress.kubernetes.io/client-body-buffer-size: "1M"
+
+  tls:
+    - secretName: zymtrace-gateway-tls
+      hosts:
+        - zymtrace.example.com
+
+# ---------------------------------------------------------------------------
+# OPTIONAL: enable mTLS for the profiler agent.
+# Requires SSL passthrough on the NGINX controller — see
+# ../reference.md § mTLS for full setup.
+#
+# services:
+#   gateway:
+#     mtls:
+#       enabled: true
+#       # Prefer --set-file on CLI rather than inlining cert/key/ca:
+#       #   --set-file services.gateway.mtls.cert=server.crt
+#       #   --set-file services.gateway.mtls.key=server.key
+#       #   --set-file services.gateway.mtls.ca=ca.crt
+#       port: 9090
+#
+# ingress:
+#   hosts:
+#     gateway:
+#       mtls:
+#         enabled: true
+#         host: "mtls.zymtrace.example.com"   # MUST be a different hostname
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#         annotations:
+#           nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+#           nginx.ingress.kubernetes.io/proxy-body-size: "0"
+#           nginx.ingress.kubernetes.io/client-body-buffer-size: "1M"
