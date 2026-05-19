@@ -17,6 +17,10 @@ Once installed, describe what you want in plain English and Claude Code handles 
 
 ## What's inside
 
+
+<img width="886" height="514" alt="Image" src="https://github.com/user-attachments/assets/e0e0dcba-2496-4ea6-8dbf-1a519b403546" />
+
+
 | Skill | What it does |
 |-------|-------------|
 | [`install-zymtrace-backend`](skills/install-zymtrace-backend/) | Install the backend on Kubernetes (Helm) or Docker Compose. Handles license, databases, air-gapped registries. |
@@ -27,6 +31,8 @@ Once installed, describe what you want in plain English and Claude Code handles 
 | [`troubleshoot-zymtrace-profiler`](skills/troubleshoot-zymtrace-profiler/) | Diagnose agent-side failures — CrashLoopBackOff, OOMKilled, NVML missing, PC sampling, license rejected. |
 | [`configure-zymtrace-mcp`](skills/configure-zymtrace-mcp/) | Connect Claude Code (or any MCP client) to the zymtrace MCP server so you can analyze profiles with natural-language queries. |
 | [`analyze-zymtrace-workload`](skills/analyze-zymtrace-workload/) | Investigate a GPU or CPU workload through the MCP — classify (inference vs training), pull GPU + matching CPU flamegraphs, recommend a fix. |
+
+
 
 ## Install
 
@@ -79,19 +85,10 @@ Describe what you want — Claude Code routes to the right skill automatically. 
 /zymtrace:troubleshoot-zymtrace-backend
 ```
 
-(If you used the symlink path above, drop the `zymtrace:` namespace — invoke as `/install-zymtrace-backend`, etc.)
-
 ### See what's installed
 
 Run **`/skills`** in any Claude Code session to see the full list with token costs and on/off toggles. You should see all five zymtrace skills:
 
-```
-✓ on  expose-zymtrace-backend         ·  user  ·  ~100 tok
-✓ on  install-zymtrace-backend        ·  user  ·  ~120 tok
-✓ on  install-zymtrace-profiler       ·  user  ·  ~170 tok
-✓ on  troubleshoot-zymtrace-backend   ·  user  ·  ~120 tok
-✓ on  upgrade-zymtrace-backend        ·  user  ·  ~100 tok
-```
 
 Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat — every change is confirmed with you first.
 
