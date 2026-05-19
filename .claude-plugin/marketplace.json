@@ -1,5 +1,6 @@
 {
   "name": "zymtrace-skills",
+  "description": "Skills for operating zymtrace — install, upgrade, expose, and troubleshoot the AI optimization platform for continuous CPU and GPU profiling.",
   "owner": {
     "name": "Zymtrace",
     "email": "support@zymtrace.com",
@@ -8,7 +9,7 @@
   "plugins": [
     {
       "name": "zymtrace",
-      "source": ".",
+      "source": "./zymtrace",
       "description": "Install, upgrade, expose, and troubleshoot zymtrace — the AI optimization platform for continuous CPU and GPU profiling.",
       "version": "26.5.0",
       "author": {
