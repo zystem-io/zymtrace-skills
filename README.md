@@ -49,33 +49,6 @@ That's it. Skills become available as `/zymtrace:install-zymtrace-backend`, `/zy
 
 (`claude plugin marketplace list` is handy to confirm the marketplace was added, but it's the `install` step that actually enables the skills.)
 
-### Alternative — local install
-
-If you'd rather not go through Claude's plugin system, install the skills directly.
-
-Get the files (pick whichever you have):
-
-```bash
-# With git
-git clone https://github.com/zystem-io/zymtrace-skills.git ~/zymtrace-skills
-
-# Or without git (curl + tar)
-curl -fsSL https://github.com/zystem-io/zymtrace-skills/archive/refs/heads/main.tar.gz \
-  | tar -xz -C "$HOME" \
-  && mv "$HOME/zymtrace-skills-main" "$HOME/zymtrace-skills"
-```
-
-Then copy the skills into your Claude Code skills folder:
-
-```bash
-mkdir -p ~/.claude/skills
-cp -R ~/zymtrace-skills/zymtrace/skills/* ~/.claude/skills/
-```
-
-Start a new Claude Code session and you're ready. To get updates later, redownload and re-run the copy command.
-
-> **Note:** the plugin install above is recommended. The skills' bundled helper scripts (verify/diagnose) and deep `reference.md` files are addressed via `${CLAUDE_PLUGIN_ROOT}`, which Claude Code only sets under the plugin install. With the manual copy those paths don't resolve, so Claude falls back to running the equivalent commands inline — the skills still work, you just don't get the bundled scripts.
-
 ## How to use
 
 Describe what you want — Claude Code routes to the right skill automatically. Or invoke a skill directly with its name:
@@ -95,18 +68,24 @@ Run **`/skills`** in any Claude Code session to see the full list with token cos
 
 Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat — every change is confirmed with you first.
 
-## Need a license or help?
-
-- **Free CPU profiling**: works without any license.
-- **GPU profiling**: ask the team for a generous free trial at <https://zymtrace.com/getstarted/>.
-- **Community Slack**: <https://join.slack.com/t/zymtrace/shared_invite/zt-3fdidjufl-q~NHxDzQlzal2B9mujfaoQ>
-- **Email**: <support@zymtrace.com>
-
-## What's next
-
-Once your backend is up and the profiler is reporting, run `/mcp` in Claude Code to connect to the zymtrace MCP server and analyze GPU and CPU flamegraphs straight from the terminal. Docs: <https://docs.zymtrace.com/mcp>
-
 ## Contributing
+
+Clone the repo and install the plugin from the local path — loads as a plugin, so `${CLAUDE_PLUGIN_ROOT}` and the helper scripts resolve:
+
+```bash
+git clone https://github.com/zystem-io/zymtrace-skills.git
+cd zymtrace-skills
+claude plugin add ./zymtrace
+```
+
+Or symlink as personal skills (no `${CLAUDE_PLUGIN_ROOT}`, so bundled scripts won't resolve):
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s "$PWD"/zymtrace/skills/*/ ~/.claude/skills/
+```
+
+Run the tests before committing:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -115,3 +94,12 @@ make test      # structural tests — layout, frontmatter, version sync, path ch
 ```
 
 The structural suite needs no API keys, cluster, or network, and runs in CI on every branch. See [CLAUDE.md](CLAUDE.md) for repo conventions and how to add a skill.
+
+## What's next
+
+Once your backend is up and the profiler is reporting, run `/mcp` in Claude Code to connect to the zymtrace MCP server and analyze GPU and CPU flamegraphs straight from the terminal. Docs: <https://docs.zymtrace.com/mcp>
+
+## Support 
+
+- **Community Slack**: <https://join.slack.com/t/zymtrace/shared_invite/zt-3fdidjufl-q~NHxDzQlzal2B9mujfaoQ>
+- **Email**: <support@zymtrace.com>

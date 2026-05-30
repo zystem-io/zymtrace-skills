@@ -45,6 +45,22 @@ tests/                           # Structural pytest suite (no API keys / cluste
   `--reset-then-reuse-values`, backups) are centralized in
   `zymtrace/shared/conventions.md`; skills link back to it rather than repeating it.
 
+## Local build
+
+Install the plugin from a local checkout to test changes before publishing. This
+keeps plugin semantics, so `${CLAUDE_PLUGIN_ROOT}` resolves and the helper scripts /
+`reference.md` files behave exactly as they do from the marketplace:
+
+```bash
+git clone https://github.com/zystem-io/zymtrace-skills.git
+cd zymtrace-skills
+claude plugin add ./zymtrace   # the plugin root is zymtrace/, not the repo root
+```
+
+Restart the Claude Code session to pick up edits. Prefer this over copying skills into
+`~/.claude/skills/` — the raw copy loses `${CLAUDE_PLUGIN_ROOT}`, so the bundled scripts
+won't resolve.
+
 ## Tests
 
 ```bash
