@@ -21,7 +21,7 @@ Helps the user upgrade an already-installed zymtrace backend. Three paths:
 | **B. Chart version bump** | Helm chart version + templates + defaults | New chart features, schema additions, new config keys. |
 | **C. Combined** | Chart + image together | The common case for moving between zymtrace minor/major releases. |
 
-Deep details (backup, rollback, schema migrations, the `migrate` job) live in [`reference.md`](reference.md).
+Deep details (backup, rollback, schema migrations, the `migrate` job) live in `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/reference.md`.
 
 > Fresh install? Use the `install-zymtrace-backend` skill instead.
 
@@ -108,10 +108,10 @@ If the user is jumping multiple **major** versions (e.g. 24.x → 26.x), advise 
 
 ##### Claude runs
 ```bash
-./scripts/preflight-upgrade.sh <NS> <REL>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/preflight-upgrade.sh <NS> <REL>
 ```
 
-Pass the namespace and release resolved in Pre-resolve. If the user has overridden `global.namePrefix`, also pass it: `PREFIX=<value> ./scripts/preflight-upgrade.sh <NS> <REL>`.
+Pass the namespace and release resolved in Pre-resolve. If the user has overridden `global.namePrefix`, also pass it: `PREFIX=<value> bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/preflight-upgrade.sh <NS> <REL>`.
 
 Prints current release state, target version availability, pending operations, plus a values diff if `helm-diff` is installed. Use the output to confirm the upgrade target with the user before continuing.
 
@@ -197,7 +197,7 @@ ERROR: image pull / `ImagePullBackOff` → tag doesn't exist, or air-gapped regi
 
 ##### Claude runs
 ```bash
-../install-zymtrace-backend/scripts/verify-backend.sh <NS> <REL>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/install-zymtrace-backend/scripts/verify-backend.sh <NS> <REL>
 ```
 
 Pass `PREFIX=<value>` env var if `global.namePrefix` is overridden.

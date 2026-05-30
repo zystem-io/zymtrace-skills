@@ -21,3 +21,9 @@ current-values.yaml
 # Backups
 *.bak
 *.orig
+
+# Python test env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc

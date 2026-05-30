@@ -17,7 +17,7 @@ Helps the user install the zymtrace **backend** — gateway, ingest, web, symdb,
 
 > The profiler agent is a separate install (`install-zymtrace-profiler` skill). This skill is only the backend that receives data.
 
-Deep details, secret-creation commands, Docker Compose, and air-gapped live in [`reference.md`](reference.md) — read it when the decision tree points you there.
+Deep details, secret-creation commands, Docker Compose, and air-gapped live in `${CLAUDE_PLUGIN_ROOT}/skills/install-zymtrace-backend/reference.md` — read it when the decision tree points you there.
 
 ## Greet the user (start here)
 
@@ -248,10 +248,10 @@ ERROR: `another operation … in progress` → a previous helm op is stuck. `hel
 
 ##### Claude runs
 ```bash
-./scripts/verify-backend.sh <NS> <REL>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/install-zymtrace-backend/scripts/verify-backend.sh <NS> <REL>
 ```
 
-If the user has overridden `global.namePrefix`, also pass it: `PREFIX=<value> ./scripts/verify-backend.sh <NS> <REL>`.
+If the user has overridden `global.namePrefix`, also pass it: `PREFIX=<value> bash ${CLAUDE_PLUGIN_ROOT}/skills/install-zymtrace-backend/scripts/verify-backend.sh <NS> <REL>`.
 
 Runs `helm status`, dumps `kubectl get` for pods/jobs/svc/ingress/hpa, dumps logs for each backend service, describes any non-Running pod. Use the Done checklist below as exit criteria — do not declare success until every box checks.
 
@@ -324,7 +324,7 @@ Exit when ALL of the following are true (substitute `<NS>` / `<REL>` / `<PREFIX>
 - [ ] No license / auth / forbidden errors in `kubectl logs deployment/<PREFIX>-ingest -n <NS> --tail=50`.
 - [ ] Gateway responds: `curl -fsI http://<host>` returns anything except connection-refused / timeout / 5xx.
 
-If any box fails, hand off to the `troubleshoot-zymtrace-backend` skill, or use `scripts/verify-backend.sh` output.
+If any box fails, hand off to the `troubleshoot-zymtrace-backend` skill, or use the `verify-backend.sh` output.
 
 ## Common pitfalls
 

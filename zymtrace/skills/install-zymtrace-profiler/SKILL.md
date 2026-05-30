@@ -17,7 +17,7 @@ Helps the user install the zymtrace **profiler agent** — the low-overhead eBPF
 
 > The backend must be installed first (`install-zymtrace-backend` skill). Profiler agents have nowhere to send profiles otherwise.
 
-Deep details (NVML library paths, PC sampling, env var reference, air-gapped image mirroring, framework metrics) live in [`reference.md`](reference.md).
+Deep details (NVML library paths, PC sampling, env var reference, air-gapped image mirroring, framework metrics) live in `${CLAUDE_PLUGIN_ROOT}/skills/install-zymtrace-profiler/reference.md`.
 
 ## Greet the user (start here)
 
@@ -183,7 +183,7 @@ ERROR: pod CrashLoopBackOff with `permission denied` on `/sys/kernel/debug` → 
 
 ##### Claude runs
 ```bash
-./scripts/verify-profiler.sh <NS> <REL>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/install-zymtrace-profiler/scripts/verify-profiler.sh <NS> <REL>
 ```
 
 Checks DaemonSet readiness, license validity in logs, GPU library extraction (if `cudaProfiler.enabled`), and connection-to-gateway evidence (no `connection refused` or `dns lookup failed` in last 50 log lines).

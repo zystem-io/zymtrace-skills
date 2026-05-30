@@ -1,0 +1,109 @@
+# zymtrace-skills — Development Guide
+
+Claude Code skills for installing, upgrading, exposing, troubleshooting, and analyzing
+[zymtrace](https://zymtrace.com) — continuous CPU/GPU profiling. This guide is for
+people *developing* the skills; end-user docs live in [README.md](README.md).
+
+## Repository structure
+
+A single Claude Code plugin at `zymtrace/`, plus a repo-root marketplace manifest and
+the test suite.
+
+```
+.claude-plugin/marketplace.json   # Marketplace manifest (lists the plugin)
+zymtrace/                         # Plugin root  (== ${CLAUDE_PLUGIN_ROOT} at runtime)
+  .claude-plugin/plugin.json      # Plugin manifest
+  shared/                         # Cross-skill docs (conventions.md, references.md)
+  skills/<skill-name>/
+    SKILL.md                      # Required. Frontmatter + workflow.
+    reference.md                  # Optional. Deep details for progressive disclosure.
+    scripts/*.sh                  # Optional. Verify/diagnose helpers (executable).
+    values/*.yaml                 # Optional. Helm values templates.
+tests/                           # Structural pytest suite (no API keys / cluster)
+```
+
+## Key conventions
+
+- **Versions stay in sync.** `plugin.json`, the `marketplace.json` plugin entry, and
+  every skill's `metadata.version` must all match. This is the single source of truth
+  for the release and is enforced by `tests/structural/test_frontmatter.py` and
+  `test_plugin_structure.py`.
+- **Intra-plugin paths use `${CLAUDE_PLUGIN_ROOT}`, never bare relative paths.** Skills
+  run with the user's working directory, *not* the skill directory, as cwd. Any script
+  the skill runs or reference file it reads must be addressed as
+  `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/scripts/<x>.sh` /
+  `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/reference.md`. Enforced by
+  `tests/structural/test_paths.py`. (Markdown navigation links *between* skills, e.g.
+  `[expose-zymtrace-backend](../expose-zymtrace-backend/SKILL.md)`, may stay relative —
+  the agent resolves those when reading a known file.)
+- **Scripts are executable** (`chmod +x`) and invoked as `bash ${CLAUDE_PLUGIN_ROOT}/...`.
+- **Skill `name` == directory name.**
+- **Frontmatter** must include `name`, `description` (with `Trigger phrases:`), and
+  `metadata.version`. zymtrace skills also carry `metadata.author/repository/tags/tools`.
+- **Secrets never touch disk or chat** — see each skill's `## Security constraints`.
+- **Helm conventions** (namespace/release resolution, the single canonical values file,
+  `--reset-then-reuse-values`, backups) are centralized in
+  `zymtrace/shared/conventions.md`; skills link back to it rather than repeating it.
+
+## Local build
+
+Install the plugin from a local checkout to test changes before publishing. This
+keeps plugin semantics, so `${CLAUDE_PLUGIN_ROOT}` resolves and the helper scripts /
+`reference.md` files behave exactly as they do from the marketplace:
+
+```bash
+git clone https://github.com/zystem-io/zymtrace-skills.git
+cd zymtrace-skills
+claude plugin add ./zymtrace   # the plugin root is zymtrace/, not the repo root
+```
+
+Restart the Claude Code session to pick up edits. Prefer this over copying skills into
+`~/.claude/skills/` — the raw copy loses `${CLAUDE_PLUGIN_ROOT}`, so the bundled scripts
+won't resolve.
+
+## Tests
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+make install   # pytest + PyYAML
+make test      # structural tests only
+```
+
+The structural suite verifies:
+- Plugin + marketplace manifests parse, have required fields, and use semver
+- Version consistency across plugin.json, marketplace.json, and every skill
+- Frontmatter presence + required fields; `name` matches the directory
+- Directory layout matches `REQUIRED_SKILLS` (no orphan or undeclared skills)
+- Path portability: no bare `./scripts/` invocations; every `${CLAUDE_PLUGIN_ROOT}`
+  path resolves; referenced scripts are executable
+
+No API keys, cluster, or network access are needed.
+
+## Adding a new skill
+
+1. Create `zymtrace/skills/<skill-name>/SKILL.md` with frontmatter:
+   ```yaml
+   ---
+   name: <skill-name>          # must equal the directory name
+   description: |
+     What this skill does and when to use it.
+     Trigger phrases: "phrase one", "phrase two", ...
+   metadata:
+     version: "26.5.0"         # must match plugin.json
+     author: zymtrace
+     repository: https://github.com/zystem-io/zymtrace-skills
+     tags: zymtrace,...
+     tools: helm,kubectl,...
+   ---
+   ```
+2. Address any scripts/reference files via `${CLAUDE_PLUGIN_ROOT}/skills/<skill-name>/...`
+   and `chmod +x` the scripts.
+3. Add `<skill-name>` to `REQUIRED_SKILLS` in `tests/constants.py`.
+4. Add a row to the skills table in `README.md`.
+5. Run `make test`.
+
+## Releasing a new version
+
+Bump the version in **all** of: `zymtrace/.claude-plugin/plugin.json`,
+`.claude-plugin/marketplace.json` (plugin entry), and every skill's `metadata.version`.
+Run `make test` to confirm they're in lockstep, then tag `v<major>.<minor>.<patch>`.
