@@ -1,6 +1,7 @@
 """Plugin manifest, marketplace manifest, and directory-layout tests."""
 
 import json
+import re
 
 import pytest
 
@@ -68,3 +69,20 @@ def test_no_unexpected_skill_dirs(skills_dir):
     missing = set(REQUIRED_SKILLS) - actual
     assert not unexpected, f"undeclared skill directories (add to REQUIRED_SKILLS): {unexpected}"
     assert not missing, f"declared skills with no directory: {missing}"
+
+
+def test_readme_lists_all_skills():
+    """README's skills table must reference exactly the skills in REQUIRED_SKILLS.
+
+    Catches doc drift: a skill added/removed in tests/constants.py (and on disk)
+    without a matching update to the README table, or vice versa. Skill rows are
+    detected by their `zymtrace/skills/<name>/` links (the `cp ... skills/*` line
+    in the install section uses `*` and is correctly ignored).
+    """
+    readme = (REPO_ROOT / "README.md").read_text()
+    documented = set(re.findall(r"zymtrace/skills/([a-z][a-z0-9-]+)", readme))
+    required = set(REQUIRED_SKILLS)
+    missing = required - documented
+    extra = documented - required
+    assert not missing, f"skills missing from the README table: {sorted(missing)}"
+    assert not extra, f"README references skills not in REQUIRED_SKILLS (drift): {sorted(extra)}"
