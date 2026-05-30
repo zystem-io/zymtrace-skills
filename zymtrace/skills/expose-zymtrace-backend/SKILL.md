@@ -15,7 +15,7 @@ metadata:
 
 Helps the user expose the gateway service externally. The zymtrace gateway is the single external surface — UI, ingest (gRPC), and symdb (HTTP) all flow through it.
 
-Deep details (LoadBalancer one-liner, ACM cert lookup, cert-manager) live in [`reference.md`](reference.md).
+Deep details (LoadBalancer one-liner, ACM cert lookup, cert-manager) live in `${CLAUDE_PLUGIN_ROOT}/skills/expose-zymtrace-backend/reference.md`.
 
 > Backend must already be installed (`helm list -A | grep -i zymtrace` shows a release). If not, use `install-zymtrace-backend`.
 
@@ -151,7 +151,7 @@ ERROR: TLS cert mismatch (`ssl_error_bad_cert_domain` in browser) — ACM cert C
 
 ##### Claude runs
 ```bash
-./scripts/verify-exposure.sh <NS> <REL>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/expose-zymtrace-backend/scripts/verify-exposure.sh <NS> <REL>
 ```
 
 Checks: ingress address resolves, TLS handshake succeeds (if TLS), gateway HTTP probe returns a non-5xx response, agent gRPC port is reachable.

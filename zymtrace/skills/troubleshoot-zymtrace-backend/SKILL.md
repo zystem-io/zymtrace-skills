@@ -72,7 +72,7 @@ The end-to-end profile path is: **workload → profiler agent → backend gatewa
 
 ##### Claude runs
 ```bash
-./scripts/diagnose-no-data.sh <backend-NS> <backend-REL> <profiler-NS> <profiler-REL>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/troubleshoot-zymtrace-backend/scripts/diagnose-no-data.sh <backend-NS> <backend-REL> <profiler-NS> <profiler-REL>
 ```
 
 The script automates all four checks below. The manual walkthrough:

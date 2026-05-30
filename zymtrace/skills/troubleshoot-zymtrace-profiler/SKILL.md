@@ -75,7 +75,7 @@ A one-shot script that gathers the most common signals:
 
 ##### Claude runs
 ```bash
-./scripts/diagnose-agent-not-reporting.sh <NS> <REL>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/troubleshoot-zymtrace-profiler/scripts/diagnose-agent-not-reporting.sh <NS> <REL>
 ```
 
 It dumps DaemonSet readiness, pod status, recent logs, license/connection signals, and a `describe` for any non-Running pod. Use it as the opening move for most scenarios below.

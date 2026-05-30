@@ -33,22 +33,21 @@ Once installed, describe what you want in plain English and Claude Code handles 
 | [`analyze-zymtrace-workload`](zymtrace/skills/analyze-zymtrace-workload/) | Investigate a GPU or CPU workload through the MCP — classify (inference vs training), pull GPU + matching CPU flamegraphs, recommend a fix. |
 
 
-
-
-
 ## Install
 
 ### Recommended — as a Claude Code plugin
 
 Inside any Claude Code session, run:
 
-```text
-/plugin marketplace add zystem-io/zymtrace-skills
-/plugin install zymtrace@zymtrace-skills
-/reload-plugins
+```bash
+claude plugin marketplace add zystem-io/zymtrace-skills
+
+claude plugin install zymtrace@zymtrace-skills
 ```
 
 That's it. Skills become available as `/zymtrace:install-zymtrace-backend`, `/zymtrace:upgrade-zymtrace-backend`, and so on.
+
+(`claude plugin marketplace list` is handy to confirm the marketplace was added, but it's the `install` step that actually enables the skills.)
 
 ### Alternative — local install
 
@@ -75,6 +74,8 @@ cp -R ~/zymtrace-skills/zymtrace/skills/* ~/.claude/skills/
 
 Start a new Claude Code session and you're ready. To get updates later, redownload and re-run the copy command.
 
+> **Note:** the plugin install above is recommended. The skills' bundled helper scripts (verify/diagnose) and deep `reference.md` files are addressed via `${CLAUDE_PLUGIN_ROOT}`, which Claude Code only sets under the plugin install. With the manual copy those paths don't resolve, so Claude falls back to running the equivalent commands inline — the skills still work, you just don't get the bundled scripts.
+
 ## How to use
 
 Describe what you want — Claude Code routes to the right skill automatically. Or invoke a skill directly with its name:
@@ -89,7 +90,7 @@ Describe what you want — Claude Code routes to the right skill automatically. 
 
 ### See what's installed
 
-Run **`/skills`** in any Claude Code session to see the full list with token costs and on/off toggles. You should see all five zymtrace skills:
+Run **`/skills`** in any Claude Code session to see the full list with token costs and on/off toggles. You should see all eight zymtrace skills:
 
 
 Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat — every change is confirmed with you first.
@@ -104,3 +105,13 @@ Each skill walks you through the decisions, runs the right commands, and verifie
 ## What's next
 
 Once your backend is up and the profiler is reporting, run `/mcp` in Claude Code to connect to the zymtrace MCP server and analyze GPU and CPU flamegraphs straight from the terminal. Docs: <https://docs.zymtrace.com/mcp>
+
+## Contributing
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+make install   # pytest + PyYAML
+make test      # structural tests — layout, frontmatter, version sync, path checks
+```
+
+The structural suite needs no API keys, cluster, or network, and runs in CI on every branch. See [CLAUDE.md](CLAUDE.md) for repo conventions and how to add a skill.
