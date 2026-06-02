@@ -1,0 +1,21 @@
+{
+  "name": "zymtrace-skills",
+  "interface": {
+    "displayName": "Zymtrace"
+  },
+  "plugins": [
+    {
+      "name": "zymtrace",
+      "source": {
+        "source": "local",
+        "path": "./zymtrace"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "NONE"
+      },
+      "category": "Developer Tools",
+      "description": "Detect and optimize CPU and GPU workload bottlenecks with zymtrace continuous profiling — analyze flamegraphs through the MCP, plus install, upgrade, expose, and troubleshoot the platform."
+    }
+  ]
+}

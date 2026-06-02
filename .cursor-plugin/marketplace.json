@@ -1,0 +1,16 @@
+{
+  "name": "zymtrace-skills",
+  "owner": {
+    "name": "Zymtrace"
+  },
+  "metadata": {
+    "description": "Zymtrace continuous CPU/GPU profiling plugins for Cursor"
+  },
+  "plugins": [
+    {
+      "name": "zymtrace",
+      "source": "zymtrace",
+      "description": "Detect and optimize CPU and GPU workload bottlenecks with zymtrace continuous profiling — analyze flamegraphs through the MCP, plus install, upgrade, expose, and troubleshoot the platform."
+    }
+  ]
+}

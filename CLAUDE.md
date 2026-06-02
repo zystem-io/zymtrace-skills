@@ -6,15 +6,20 @@ people *developing* the skills; end-user docs live in [README.md](README.md).
 
 ## Repository structure
 
-A single Claude Code plugin at `zymtrace/`, plus a repo-root marketplace manifest and
-the test suite.
+A single plugin at `zymtrace/` that installs into **Claude Code, OpenAI Codex, and Cursor**
+from one canonical source, plus repo-root marketplace manifests (one per tool) and the test
+suite.
 
 ```
-.claude-plugin/marketplace.json   # Marketplace manifest (lists the plugin)
+.claude-plugin/marketplace.json   # Claude Code marketplace manifest
+.agents/plugins/marketplace.json  # Codex (and generic) marketplace manifest
+.cursor-plugin/marketplace.json   # Cursor marketplace manifest
 zymtrace/                         # Plugin root  (== ${CLAUDE_PLUGIN_ROOT} at runtime)
-  .claude-plugin/plugin.json      # Plugin manifest
+  .claude-plugin/plugin.json      # Claude Code plugin manifest
+  .codex-plugin/plugin.json       # Codex plugin manifest  (declares "skills": "./skills/")
+  .cursor-plugin/plugin.json      # Cursor plugin manifest (declares "skills": "./skills/")
   shared/                         # Cross-skill docs (conventions.md, references.md)
-  skills/<skill-name>/
+  skills/<skill-name>/            # THE canonical source — every tool reads these
     SKILL.md                      # Required. Frontmatter + workflow.
     reference.md                  # Optional. Deep details for progressive disclosure.
     scripts/*.sh                  # Optional. Verify/diagnose helpers (executable).
@@ -24,10 +29,20 @@ tests/                           # Structural pytest suite (no API keys / cluste
 
 ## Key conventions
 
-- **Versions stay in sync.** `plugin.json`, the `marketplace.json` plugin entry, and
-  every skill's `metadata.version` must all match. This is the single source of truth
-  for the release and is enforced by `tests/structural/test_frontmatter.py` and
-  `test_plugin_structure.py`.
+- **Versions stay in sync.** All three product `plugin.json` files
+  (`.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`), the Claude `marketplace.json`
+  plugin entry, and every skill's `metadata.version` must all match. This is the single
+  source of truth for the release and is enforced by `tests/structural/test_frontmatter.py`
+  and `test_plugin_structure.py`.
+- **Multi-platform manifests are hand-written, not generated.** One canonical source
+  (`zymtrace/skills/`); each tool gets its own `plugin.json` (inside `zymtrace/`) and a
+  repo-root marketplace file, all pointing at the same `skills/`. They differ only in
+  per-tool metadata and field names. zymtrace bundles **no MCP server, no hooks, no
+  commands** — the MCP is connected separately via `configure-zymtrace-mcp` and the
+  gateway URL is per-deployment, so Codex install `authentication` is `NONE`. The product
+  maps `PRODUCT_PLUGIN_JSONS` / `PRODUCT_MARKETPLACE_JSONS` in `tests/conftest.py` drive
+  the structural tests that catch drift. Codex reads `.agents/plugins/marketplace.json`;
+  Cursor reads `.cursor-plugin/marketplace.json`.
 - **Intra-plugin paths use `${CLAUDE_PLUGIN_ROOT}`, never bare relative paths.** Skills
   run with the user's working directory, *not* the skill directory, as cwd. Any script
   the skill runs or reference file it reads must be addressed as
@@ -108,6 +123,9 @@ No API keys, cluster, or network access are needed.
 
 ## Releasing a new version
 
-Bump the version in **all** of: `zymtrace/.claude-plugin/plugin.json`,
-`.claude-plugin/marketplace.json` (plugin entry), and every skill's `metadata.version`.
-Run `make test` to confirm they're in lockstep, then tag `v<major>.<minor>.<patch>`.
+Bump the version in **all** of: the three product manifests
+`zymtrace/.claude-plugin/plugin.json`, `zymtrace/.codex-plugin/plugin.json`,
+`zymtrace/.cursor-plugin/plugin.json`; the `.claude-plugin/marketplace.json` plugin entry;
+and every skill's `metadata.version`. (The Codex and Cursor marketplace files carry no
+version field — version lives in their `plugin.json`.) Run `make test` to confirm they're
+in lockstep, then tag `v<major>.<minor>.<patch>`.

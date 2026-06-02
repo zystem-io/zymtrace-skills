@@ -1,0 +1,38 @@
+{
+  "name": "zymtrace",
+  "version": "26.5.0",
+  "description": "Detect and optimize CPU and GPU workload bottlenecks with zymtrace continuous profiling — analyze flamegraphs through the MCP, plus install, upgrade, expose, and troubleshoot the platform.",
+  "author": {
+    "name": "Zymtrace",
+    "email": "support@zymtrace.com",
+    "url": "https://zymtrace.com"
+  },
+  "homepage": "https://zymtrace.com",
+  "repository": "https://github.com/zystem-io/zymtrace-skills",
+  "keywords": [
+    "zymtrace",
+    "profiling",
+    "gpu",
+    "cpu",
+    "flamegraph",
+    "kubernetes",
+    "helm",
+    "mcp",
+    "observability"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Zymtrace",
+    "shortDescription": "Continuous CPU/GPU profiling workflows",
+    "longDescription": "Install, upgrade, expose, and troubleshoot the zymtrace continuous profiling platform, and analyze CPU/GPU flamegraphs through the zymtrace MCP to find and fix workload bottlenecks.",
+    "developerName": "Zymtrace",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://zymtrace.com",
+    "defaultPrompt": [
+      "Use zymtrace to analyze the GPU flamegraph over the last 1 hour and suggest solutions.",
+      "Use zymtrace to install the backend on my Kubernetes cluster.",
+      "Use zymtrace to find out why no profiles are showing up in the UI."
+    ]
+  }
+}
