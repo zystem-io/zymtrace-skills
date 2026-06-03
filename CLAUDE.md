@@ -54,12 +54,16 @@ keeps plugin semantics, so `${CLAUDE_PLUGIN_ROOT}` resolves and the helper scrip
 ```bash
 git clone https://github.com/zystem-io/zymtrace-skills.git
 cd zymtrace-skills
-claude plugin add ./zymtrace   # the plugin root is zymtrace/, not the repo root
+claude plugin validate ./zymtrace              # fast check: manifest parses (plugin root is zymtrace/)
+claude plugin marketplace add "$PWD"           # register the repo-root marketplace (zymtrace-skills)
+claude plugin install zymtrace@zymtrace-skills # install the plugin from it
 ```
 
-Restart the Claude Code session to pick up edits. Prefer this over copying skills into
-`~/.claude/skills/` — the raw copy loses `${CLAUDE_PLUGIN_ROOT}`, so the bundled scripts
-won't resolve.
+Restart the Claude Code session to pick up edits (after editing, `claude plugin marketplace
+update zymtrace-skills` re-reads the local manifest). Inspect what loaded — including agents and
+per-component token cost — with `claude plugin details zymtrace`. Prefer this plugin install over
+copying skills into `~/.claude/skills/` — the raw copy loses `${CLAUDE_PLUGIN_ROOT}`, so the
+bundled scripts won't resolve.
 
 ## Tests
 

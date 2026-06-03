@@ -36,12 +36,14 @@ For any of these: default to the last 1 hour if no time range is given, default 
 
 ## Pre-flight
 
-##### Claude runs
+**First, establish which zymtrace instance you're analyzing — you need its zymtrace URL in context.**
+
 ```bash
 claude mcp list | grep -i zymtrace
 ```
 
-If zymtrace isn't listed → route to [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md). If listed, proceed.
+- **Listed** → MCP is connected; proceed.
+- **Not listed** → route to [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md) to connect. It needs the zymtrace URL: if the user already gave one in this conversation, use it; otherwise **ask** (*"What's your zymtrace URL? — e.g. `https://zymtrace.your-company.com`"*). Never guess or assume `localhost`.
 
 ## The cross-view protocol
 

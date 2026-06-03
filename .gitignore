@@ -27,3 +27,4 @@ current-values.yaml
 __pycache__/
 .pytest_cache/
 *.pyc
+.claude/settings.local.json

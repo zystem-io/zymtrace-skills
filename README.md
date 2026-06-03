@@ -32,6 +32,12 @@ Once installed, describe what you want in plain English and Claude Code handles 
 | [`configure-zymtrace-mcp`](zymtrace/skills/configure-zymtrace-mcp/) | Connect Claude Code (or any MCP client) to the zymtrace MCP server so you can analyze profiles with natural-language queries. |
 | [`analyze-zymtrace-workload`](zymtrace/skills/analyze-zymtrace-workload/) | Investigate a GPU or CPU workload through the MCP — classify (inference vs training), pull GPU + matching CPU flamegraphs, recommend a fix. |
 
+### Agent
+
+| Agent | What it does |
+|-------|-------------|
+| [`zymtrace-perf-engineer`](zymtrace/agents/zymtrace-perf-engineer.md) | Autonomous, hands-off performance investigation. Identifies the entity (script for Python, container, host, or k8s pod/deployment), pulls its metrics, then the CPU flamegraph — and the GPU flamegraph when it's a GPU workload — and returns a finished recap without stopping to confirm each step. Runs several in parallel. Invoke it by name (e.g. "use the zymtrace-perf-engineer to analyze my vLLM GPU workload"). |
+
 
 ## Install
 
@@ -61,12 +67,36 @@ Describe what you want — Claude Code routes to the right skill automatically. 
 /zymtrace:troubleshoot-zymtrace-backend
 ```
 
+Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat — every change is confirmed with you first.
+
+### The agent (hands-off mode)
+
+For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent — just name it in your request:
+
+```
+"use the zymtrace-perf-engineer to analyze my vLLM GPU workload over the last hour"
+"have the zymtrace-perf-engineer profile the inference deployment and report back"
+```
+
+It identifies the entity, pulls metrics, then the flamegraph(s), and returns one finished recap — without stopping to confirm each step. Run several at once to triage multiple workloads in parallel. Run **`/agents`** to see it in the live list. Unlike the skills, it runs autonomously, so the read-only profile pulls don't prompt for each step.
+
 ### See what's installed
 
-Run **`/skills`** in any Claude Code session to see the full list with token costs and on/off toggles. You should see all eight zymtrace skills:
+Run **`/skills`** and **`/agents`** in any session to see the components with on/off toggles. For the full inventory and per-component token cost, run:
 
+```bash
+claude plugin details zymtrace
+```
 
-Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat — every change is confirmed with you first.
+```text
+Component inventory
+  Skills (8)  analyze-zymtrace-workload, configure-zymtrace-mcp, expose-zymtrace-backend,
+              install-zymtrace-backend, install-zymtrace-profiler, troubleshoot-zymtrace-backend,
+              troubleshoot-zymtrace-profiler, upgrade-zymtrace-backend
+  Agents (1)  zymtrace-perf-engineer
+```
+
+The command also prints a live per-component token-cost breakdown (always-on vs on-invoke).
 
 ## Contributing
 
@@ -75,8 +105,12 @@ Clone the repo and install the plugin from the local path — loads as a plugin,
 ```bash
 git clone https://github.com/zystem-io/zymtrace-skills.git
 cd zymtrace-skills
-claude plugin add ./zymtrace
+claude plugin validate ./zymtrace              # fast check: manifest parses, no install
+claude plugin marketplace add "$PWD"           # register the local checkout as a marketplace
+claude plugin install zymtrace@zymtrace-skills # install from it; restart to apply
 ```
+
+After editing, re-read the local manifest and restart: `claude plugin marketplace update zymtrace-skills`.
 
 Or symlink as personal skills (no `${CLAUDE_PLUGIN_ROOT}`, so bundled scripts won't resolve):
 
