@@ -32,7 +32,9 @@ Once installed, describe what you want in plain English and your coding agent ha
 | [`configure-zymtrace-mcp`](zymtrace/skills/configure-zymtrace-mcp/) | Connect Claude Code (or any MCP client) to the zymtrace MCP server so you can analyze profiles with natural-language queries. |
 | [`analyze-zymtrace-workload`](zymtrace/skills/analyze-zymtrace-workload/) | Investigate a GPU or CPU workload through the MCP — classify (inference vs training), pull GPU + matching CPU flamegraphs, recommend a fix. |
 
-### Agent
+### Agent (Claude Code only)
+
+> The skills work in all three tools. The subagent below is currently only supported on Claude Code.
 
 | Agent | What it does |
 |-------|-------------|
@@ -66,10 +68,8 @@ That's it. Skills become available as `/zymtrace:install-zymtrace-backend`, `/zy
 
 ```bash
 codex plugin marketplace add zystem-io/zymtrace-skills
-codex plugin install zymtrace
+/plugins zymtrace
 ```
-
-Restart Codex (or run `/plugins` in-session to browse and install from the **Zymtrace** marketplace). The skills then load automatically.
 
 ### Cursor
 
@@ -92,9 +92,9 @@ Describe what you want — Claude Code routes to the right skill automatically. 
 
 Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat — every change is confirmed with you first.
 
-### The agent (hands-off mode)
+### The agent (hands-off mode, Claude Code only)
 
-For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent — just name it in your request:
+For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent (Claude Code only) — just name it in your request:
 
 ```
 "use the zymtrace-perf-engineer to analyze my vLLM GPU workload over the last hour"

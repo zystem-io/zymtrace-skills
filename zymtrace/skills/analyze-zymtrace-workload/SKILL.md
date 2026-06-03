@@ -19,7 +19,7 @@ metadata:
 
 Connection setup lives in [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md). This skill assumes the MCP is already connected.
 
-**Optional pairing — GitHub MCP**: if the user also has the GitHub MCP connected (`claude mcp list` shows both) **and** asks for code-level pointers, Claude can locate the hot frame in their repo and reference a specific `<file>:<line>` in the fix. This is a suggestion, not a default — many users don't want or need code access from the session. Mention the option once if both MCPs are available; respect the answer either way.
+**Optional pairing — GitHub MCP**: if the user also has the GitHub MCP connected (your client's MCP list shows both) **and** asks for code-level pointers, you can locate the hot frame in their repo and reference a specific `<file>:<line>` in the fix. This is a suggestion, not a default — many users don't want or need code access from the session. Mention the option once if both MCPs are available; respect the answer either way.
 
 ## Standard starter prompt (for customers who don't know what to ask)
 
@@ -38,12 +38,12 @@ For any of these: default to the last 1 hour if no time range is given, default 
 
 **First, establish which zymtrace instance you're analyzing — you need its zymtrace URL in context.**
 
-```bash
-claude mcp list | grep -i zymtrace
-```
+Check whether a zymtrace MCP server is connected in your client (in Claude Code, `claude mcp list | grep -i zymtrace`; in Codex or Cursor, the equivalent MCP-list in that tool):
 
-- **Listed** → MCP is connected; proceed.
-- **Not listed** → route to [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md) to connect. It needs the zymtrace URL: if the user already gave one in this conversation, use it; otherwise **ask** (*"What's your zymtrace URL? — e.g. `https://zymtrace.your-company.com`"*). Never guess or assume `localhost`.
+- **Connected** → proceed.
+- **Not connected** → route to [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md) to connect. It needs the zymtrace URL: if the user already gave one in this conversation, use it; otherwise **ask** (*"What's your zymtrace URL? — e.g. `https://zymtrace.your-company.com`"*). Never guess or assume `localhost`.
+
+> **Data comes only from the live zymtrace MCP for the user's instance** (or its REST API if the MCP is unreachable). **Never** substitute local profile files (`.pftrace`, `profile_*.json`) — they aren't tied to the user's instance/filter and mislead. No MCP + no URL → ask; don't analyze files on disk.
 
 ## The cross-view protocol
 
@@ -178,5 +178,6 @@ MCP returned them or they're well-known order-of-magnitude estimates.>
 ## Security constraints
 
 - **Always** ground the recommendation in the data the MCP returned (kernel names, percentages, hot stacks). Synthesize across the two views — but don't fabricate signals the data doesn't show.
+- **Never** analyze local profile files (`.pftrace`, `profile_*.json`) as a substitute for the MCP — see the data-source rule in Pre-flight.
 - **Never** declare the investigation done after only one view. Pulling the opposite side with the same filter is the load-bearing step.
 - **Never** recommend enabling PC sampling on a workload (which requires `privileged: true`) without flagging the security implication. See [install-zymtrace-profiler § PC sampling](../install-zymtrace-profiler/reference.md#pc-sampling).

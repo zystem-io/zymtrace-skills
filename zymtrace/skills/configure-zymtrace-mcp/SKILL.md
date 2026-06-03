@@ -1,25 +1,27 @@
 ---
 name: configure-zymtrace-mcp
 description: |
-  Use when connecting Claude Code (or another MCP client) to the zymtrace MCP server so the user can analyze CPU and GPU flamegraphs through natural-language queries. Walks through finding the gateway URL, generating an auth token (if service-token auth is on), running `claude mcp add`, and verifying the connection via `/mcp`. This skill is plumbing only — the analytical workflow lives in `analyze-zymtrace-workload`.
-  Trigger phrases: "connect zymtrace MCP", "set up zymtrace MCP", "configure zymtrace MCP", "add zymtrace to /mcp", "connect Claude to zymtrace", "/mcp doesn't show zymtrace", "zymtrace MCP token", "Cursor zymtrace integration", "set up the zymtrace AI assistant".
+  Use when connecting a coding agent — Claude Code, OpenAI Codex, or Cursor — to the zymtrace MCP server so the user can analyze CPU and GPU flamegraphs through natural-language queries. Walks through finding the gateway URL, generating an auth token (if service-token auth is on), adding the server with the right command for the user's client, and verifying the connection. This skill is plumbing only — the analytical workflow lives in `analyze-zymtrace-workload`.
+  Trigger phrases: "connect zymtrace MCP", "set up zymtrace MCP", "configure zymtrace MCP", "add zymtrace to /mcp", "connect Claude/Codex/Cursor to zymtrace", "/mcp doesn't show zymtrace", "zymtrace MCP token", "Cursor zymtrace integration", "set up the zymtrace AI assistant".
 metadata:
   version: "26.5.0"
   author: zymtrace
   repository: https://github.com/zystem-io/zymtrace-skills
-  tags: zymtrace,mcp,claude-code,cursor,ai-assistant,setup
-  tools: claude,curl,kubectl
+  tags: zymtrace,mcp,claude-code,codex,cursor,ai-assistant,setup
+  tools: claude,codex,curl,kubectl
 ---
 
 # Configure zymtrace MCP
 
-Helps the user connect Claude Code (or Cursor / Claude Desktop / any MCP client) to their zymtrace backend's MCP server. Once connected, the user can analyze their CPU and GPU flamegraphs with natural-language queries — see [`analyze-zymtrace-workload`](../analyze-zymtrace-workload/SKILL.md) for the analytical workflow.
+Helps the user connect their coding agent — **Claude Code, OpenAI Codex, or Cursor** — to their zymtrace backend's MCP server. Once connected, the user can analyze their CPU and GPU flamegraphs with natural-language queries — see [`analyze-zymtrace-workload`](../analyze-zymtrace-workload/SKILL.md) for the analytical workflow.
 
 > The MCP server is part of the zymtrace backend itself — it lives at `<gateway-host>/mcp`. If the backend isn't installed and reachable yet, route to `install-zymtrace-backend` and `expose-zymtrace-backend` first.
 
+**Which client?** The URL, token, and reachability steps are identical for every client; only the *add-the-server* command differs (Step 3–4). Detect the client from context — which agent is running this, or what the user says ("connect Codex", "Cursor") — and use that client's block. If unsure, ask: *"Claude Code, Codex, or Cursor?"*
+
 ## Greet the user
 
-> 👋 Let's connect Claude to your zymtrace MCP so you can analyze flamegraphs in natural language from this terminal. I'll need your zymtrace gateway URL and — if your install has service-token auth on — a token. Five minutes max.
+> 👋 Let's connect your agent to the zymtrace MCP so you can analyze flamegraphs in natural language. I'll need your zymtrace URL and — if your install has service-token auth on — a token. Five minutes max.
 >
 > Doc reference: <https://docs.zymtrace.com/mcp/configure-mcp>
 
@@ -28,18 +30,20 @@ Skip the greeting if the user has already volunteered the URL and token.
 ## Sources of truth
 
 - MCP configuration: <https://docs.zymtrace.com/mcp/configure-mcp>
-- MCP token generation: <https://docs.zymtrace.com/mcp/mcp-token>
+- Service tokens (auth): <https://docs.zymtrace.com/authentication/service-tokens>
 - MCP overview: <https://docs.zymtrace.com/mcp>
 
 ## Pre-flight
 
-##### Claude runs
-```bash
-claude --version
-claude mcp list 2>&1 | head -20
-```
+Check whether zymtrace is already connected in the user's client:
 
-If `claude --version` is older than v2.x → MCP support varies by version; recommend updating Claude Code. If `zymtrace` already appears in `claude mcp list`, the connection exists — jump straight to verification (Step 4).
+| Client | Check |
+|---|---|
+| Claude Code | `claude mcp list 2>&1 \| head -20` (and `claude --version` — older than v2.x: MCP support varies, recommend updating) |
+| Codex | `codex mcp list 2>&1 \| head -20` |
+| Cursor | open `~/.cursor/mcp.json` (or project `.cursor/mcp.json`); or Settings → MCP/Tools |
+
+If `zymtrace` already appears, the connection exists — jump straight to verification (Step 5).
 
 ## Pre-resolve what you can
 
@@ -48,18 +52,19 @@ If `claude --version` is older than v2.x → MCP support varies by version; reco
 | Backend gateway URL | Ask the user. Typically `https://zymtrace.<their-domain>` or the ALB / Ingress hostname. If installed in-cluster only, see "Port-forward fallback" below. |
 | MCP endpoint | `<gateway-url>/mcp` — append `/mcp` to whatever they give you. |
 | Auth required? | If the backend has `auth.serviceToken.enabled: true` (check with `kubectl get cm -n <NS> -o yaml \| grep -i serviceToken`), the user needs a token. Otherwise skip. |
-| Existing MCP servers | `claude mcp list` — to avoid name collision. |
+| Existing MCP servers | the client's MCP list (Pre-flight table) — to avoid name collision. |
 
 Things you **must** ask:
-- The gateway URL (don't guess).
-- Whether they want this connection at user scope (global) or project scope (just this repo).
+- The zymtrace URL (don't guess).
+- Which client they're connecting (Claude Code / Codex / Cursor), if not already clear.
+- For Claude Code / Codex: user scope (global) or project scope (just this repo).
 
 ## Decision: auth or no auth?
 
 | Backend setting | What's needed |
 |---|---|
 | `auth.serviceToken.enabled: false` (default) | No token. Connection is open within the network that can reach the gateway. |
-| `auth.serviceToken.enabled: true` | Token required. Generate one in the zymtrace UI: Settings → Service Tokens → New Token. Full doc: <https://docs.zymtrace.com/mcp/mcp-token>. |
+| `auth.serviceToken.enabled: true` | Token required. Ask the user to generate a service token in the zymtrace UI: Settings → Service Tokens → New Token. Full doc: <https://docs.zymtrace.com/authentication/service-tokens>. |
 
 For production exposures behind ALB / NGINX / mTLS, service-token auth is recommended.
 
@@ -78,6 +83,8 @@ Should return HTTP 200/204. If unreachable → the gateway isn't exposed externa
 
 ### Step 2: Generate a token (only if service-token auth is enabled)
 
+If the MCP (or the REST API) requires authentication, **ask the user to generate a zymtrace service token** — the skill never creates or sees it. Reference: <https://docs.zymtrace.com/authentication/service-tokens>.
+
 ##### What you need to do in a terminal (user-driven)
 
 The token is generated through the zymtrace UI, not by this skill:
@@ -91,46 +98,55 @@ If your install doesn't have service-token auth on, skip this step.
 
 ### Step 3: Confirm with the user before running
 
-Print the exact command:
+Print the exact command/edit for **their** client (Step 4) and wait for explicit confirmation. In every case the token stays in an env var the **user** exports first (`$ZYMTRACE_MCP_TOKEN`) — never inline the literal token in the conversation or in files.
 
+### Step 4: Add the MCP server — pick the user's client
+
+The user runs/edits this themselves (the token is in their env, not the skill's). Replace `<gateway-url>` with their URL; drop the auth header/line entirely if service-token auth is off.
+
+**Claude Code**
 ```bash
+export ZYMTRACE_MCP_TOKEN="<paste-token>"   # only if auth is on
 claude mcp add zymtrace --transport http <gateway-url>/mcp \
-  --header "Authorization: Bearer $ZYMTRACE_MCP_TOKEN"   # only if auth is on
+  --header "Authorization: Bearer $ZYMTRACE_MCP_TOKEN"   # drop this line if auth is off
 ```
+For **project scope** instead of user scope, add `--scope project` (config lands in `.claude/settings.json`).
 
-Wait for explicit confirmation. The `$ZYMTRACE_MCP_TOKEN` placeholder means **the user exports the token in their shell first** — never inline the literal token in the conversation or in files.
-
-### Step 4: Add the MCP server
-
-##### What you need to do in a terminal
-
-The user runs this (not the skill — the token is in their env):
-
+**OpenAI Codex**
 ```bash
-# Auth-on case
-export ZYMTRACE_MCP_TOKEN="<paste-token>"
-claude mcp add zymtrace --transport http <gateway-url>/mcp \
-  --header "Authorization: Bearer $ZYMTRACE_MCP_TOKEN"
-
-# Auth-off case
-claude mcp add zymtrace --transport http <gateway-url>/mcp
+export ZYMTRACE_MCP_TOKEN="<paste-token>"   # only if auth is on
+codex mcp add zymtrace --url <gateway-url>/mcp \
+  --bearer-token-env-var ZYMTRACE_MCP_TOKEN   # drop this line if auth is off
 ```
+Codex stores it as a `streamable_http` server in `~/.codex/config.toml`.
 
-For **project scope** instead of user scope, add `--scope project` and the MCP config lands in `.claude/settings.json` for the current repo.
+**Cursor** — no CLI; add an entry to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (this project):
+```json
+{
+  "mcpServers": {
+    "zymtrace": {
+      "url": "https://<gateway-url>/mcp",
+      "headers": { "Authorization": "Bearer ${env:ZYMTRACE_MCP_TOKEN}" }
+    }
+  }
+}
+```
+Drop the `"headers"` field entirely if auth is off. Cursor resolves `${env:ZYMTRACE_MCP_TOKEN}` from the environment, so the literal token still never lands in the file.
 
 ### Step 5: Verify
 
-##### Claude runs
-```bash
-claude mcp list | grep -i zymtrace
-```
+Confirm the server is registered in the user's client:
 
-Should show the zymtrace server with `Connected` status. In a fresh Claude Code session, run `/mcp` and confirm `zymtrace` is listed.
+| Client | Verify |
+|---|---|
+| Claude Code | `claude mcp list \| grep -i zymtrace` → `Connected`; in a fresh session `/mcp` lists `zymtrace`. |
+| Codex | `codex mcp list \| grep -i zymtrace`; restart Codex and confirm zymtrace appears in `/mcp`. |
+| Cursor | Settings → MCP/Tools shows `zymtrace` with a green/active indicator. |
 
-Quick functional test:
-> Ask Claude (in a new session): *"Using zymtrace MCP, list the top 5 hottest CPU functions from the last 1 hour."*
+Quick functional test (any client), in a new session:
+> *"Using zymtrace MCP, list the top 5 hottest CPU functions from the last 1 hour."*
 
-If Claude returns data, the connection works. If it errors with `unauthorized` → token wrong, regenerate. If it errors with `connection refused` → gateway URL wrong or unreachable.
+If it returns data, the connection works. `unauthorized` → token wrong, regenerate. `connection refused` → URL wrong or unreachable.
 
 ### Step 6: Hand off
 
@@ -142,13 +158,14 @@ If the user also connects the **GitHub MCP**, Claude can pair the flamegraph ana
 
 ##### What you need to do in a terminal
 
+Add the GitHub MCP (`https://api.githubcopilot.com/mcp/`, bearer `$GITHUB_TOKEN`) with the **same Step 4 mechanism** as your client — e.g. Claude Code:
 ```bash
-# Anthropic's first-party GitHub MCP, scoped to the relevant repo(s)
 claude mcp add github --transport http https://api.githubcopilot.com/mcp/ \
   --header "Authorization: Bearer $GITHUB_TOKEN"
 ```
+(Codex: `codex mcp add github --url https://api.githubcopilot.com/mcp/ --bearer-token-env-var GITHUB_TOKEN`; Cursor: a second entry in `mcp.json`.)
 
-Then in a session: *"Analyze my GPU workload over the last hour, use the github MCP to find the code path in `myorg/myrepo`, and suggest a fix."* Claude pulls the flamegraph from zymtrace, locates the hot frame in the repo via GitHub MCP, and proposes the edit. The two MCPs compose without any extra configuration on the skill side.
+Then in a session: *"Analyze my GPU workload over the last hour, use the github MCP to find the code path in `myorg/myrepo`, and suggest a fix."* The agent pulls the flamegraph from zymtrace, locates the hot frame in the repo via GitHub MCP, and proposes the edit. The two MCPs compose without any extra configuration on the skill side.
 
 ---
 
@@ -160,8 +177,9 @@ If the gateway has no external exposure (still `ClusterIP`), the user can MCP th
 
 ```bash
 kubectl port-forward -n <backend-NS> svc/<PREFIX>-gateway 8080:80
-# Leave this running, then in another shell:
-claude mcp add zymtrace --transport http http://localhost:8080/mcp
+# Leave this running, then add http://localhost:8080/mcp via your client's Step 4 command
+# (Claude: claude mcp add … http://localhost:8080/mcp; Codex: codex mcp add … --url http://localhost:8080/mcp;
+#  Cursor: "url": "http://localhost:8080/mcp" in mcp.json). Auth is usually off for a local port-forward.
 ```
 
 This is fine for dev / one-off investigations. For team-wide use, run [`expose-zymtrace-backend`](../expose-zymtrace-backend/SKILL.md) to give the gateway a real hostname.
@@ -170,15 +188,14 @@ This is fine for dev / one-off investigations. For team-wide use, run [`expose-z
 
 ## Done
 
-- [ ] `claude mcp list` shows `zymtrace` with `Connected` status.
-- [ ] `/mcp` in a fresh Claude Code session lists zymtrace.
+- [ ] The client's MCP list (Step 5) shows `zymtrace` connected.
 - [ ] A test query (e.g. "list top 5 hottest CPU functions in the last hour") returns data.
 
-If all three check, hand off to [`analyze-zymtrace-workload`](../analyze-zymtrace-workload/SKILL.md).
+If both check, hand off to [`analyze-zymtrace-workload`](../analyze-zymtrace-workload/SKILL.md).
 
 ## Common pitfalls
 
-- **`/mcp` doesn't show zymtrace after `claude mcp add`** → wrong shell scope. If you used `--scope project`, the server only appears when Claude Code runs in that repo. Add with no `--scope` flag (or `--scope user`) for global access.
+- **zymtrace doesn't appear after adding it** → wrong scope or stale session. Claude Code: if you used `--scope project`, it only shows in that repo — re-add with `--scope user` (or no flag). Codex/Cursor: restart the app so it re-reads the config.
 - **`unauthorized` on every query** → token wrong, scoped wrong, or expired. Regenerate in Settings → Service Tokens.
 - **`connection refused`** → gateway URL typo, missing `/mcp` suffix, or backend not exposed externally. Test with `curl -I <gateway-url>/health` first.
 - **`Mixed Content` in browser when testing UI on HTTP gateway** → use HTTPS via [`expose-zymtrace-backend`](../expose-zymtrace-backend/SKILL.md). MCP can stay on the same URL.
@@ -186,8 +203,8 @@ If all three check, hand off to [`analyze-zymtrace-workload`](../analyze-zymtrac
 
 ## Security constraints
 
-- **Never** inline the MCP token in the conversation, values files, scripts, commits, or `claude mcp add` arguments. Always reference an env var (`$ZYMTRACE_MCP_TOKEN`) the user exports.
+- **Never** inline the MCP token in the conversation, values files, scripts, commits, `mcp.json`, or any MCP-add command arguments. Always reference an env var (`$ZYMTRACE_MCP_TOKEN`, or `${env:ZYMTRACE_MCP_TOKEN}` in Cursor's `mcp.json`) the user exports.
 - **Never** generate, copy, or store the token on the user's behalf — the user pastes it once into their shell or password manager; the skill never sees it.
-- **Never** run `claude mcp add` for them without explicit confirmation of the exact command + gateway URL.
+- **Never** add the server for them (run the CLI command or edit `mcp.json`) without explicit confirmation of the exact command/edit + gateway URL.
 - **Never** suggest disabling auth as a "fix" for an auth error. The fix is a valid token, not less security.
-- **Never** declare the connection done without re-running `/mcp` or `claude mcp list` to verify.
+- **Never** declare the connection done without verifying via the client's MCP list (Step 5).

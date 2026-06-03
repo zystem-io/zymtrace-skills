@@ -28,4 +28,3 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .claude/settings.local.json
-.claude/settings.local.json
