@@ -15,10 +15,12 @@ Once installed, describe what you want in plain English and your coding agent ha
 "analyze the gpu flamegraph over the last 1 hour and suggest solutions"   # ← the universal starter
 ```
 
+<video src="https://github.com/user-attachments/assets/b76a4b61-7f67-4875-9fab-6502b59d2909
+" controls muted loop width="90%"></video>
+
 ## What's inside
 
 
-<img width="886" height="514" alt="Image" src="https://github.com/user-attachments/assets/e0e0dcba-2496-4ea6-8dbf-1a519b403546" />
 
 
 | Skill | What it does |
@@ -48,7 +50,7 @@ The same skills install into any of these agents. The repo carries a per-tool ma
 | Tool | Install |
 |------|---------|
 | **Claude Code** | `claude plugin marketplace add zystem-io/zymtrace-skills` → `claude plugin install zymtrace@zymtrace-skills` |
-| **OpenAI Codex** | `codex plugin marketplace add zystem-io/zymtrace-skills` → `codex plugin install zymtrace` |
+| **OpenAI Codex** | `codex plugin marketplace add zystem-io/zymtrace-skills`, then install **zymtrace** via `/plugins` |
 | **Cursor** | Settings → **Plugins** → **Team Marketplaces** → **Import** → paste the repo URL |
 
 ## Install
@@ -68,8 +70,9 @@ That's it. Skills become available as `/zymtrace:install-zymtrace-backend`, `/zy
 
 ```bash
 codex plugin marketplace add zystem-io/zymtrace-skills
-/plugins zymtrace
 ```
+
+Then run `/plugins` in Codex and install **zymtrace** from the marketplace.
 
 ### Cursor
 
@@ -94,7 +97,7 @@ Each skill walks you through the decisions, runs the right commands, and verifie
 
 ### The agent (hands-off mode, Claude Code only)
 
-For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent (Claude Code only) — just name it in your request:
+For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent (Claude Code only) — name it in your request:
 
 ```
 "use the zymtrace-perf-engineer to analyze my vLLM GPU workload over the last hour"
