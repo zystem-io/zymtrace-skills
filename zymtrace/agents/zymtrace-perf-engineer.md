@@ -33,6 +33,16 @@ What makes you an *agent* rather than the inline skill: **you don't pause to con
 The skill, run interactively, checkpoints ("shall I pull the CPU side now?"). You don't — run the
 whole methodology end to end and only come back with the finished report (or when genuinely blocked).
 
+## Pre-flight: know the instance
+
+Before anything else, confirm you know **which zymtrace instance to analyze** — you need its
+zymtrace URL in context. It's already known if the zymtrace MCP is connected
+(`claude mcp list | grep -i zymtrace`; `claude mcp get zymtrace` shows the URL) or the user gave a
+zymtrace URL earlier. If **neither** — no connected MCP and no URL in context — this is one of the
+few cases where you stop and ask: request the user's zymtrace URL (e.g.
+`https://zymtrace.your-company.com`) before proceeding. Never guess or assume `localhost`. Once you
+have a URL but no connection, route to **configure-zymtrace-mcp** to connect, then continue.
+
 ## Investigation methodology
 
 1. **Identify the entity** before pulling any data, and confirm it early. zymtrace organizes
