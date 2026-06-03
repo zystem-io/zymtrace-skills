@@ -29,11 +29,12 @@ tests/                           # Structural pytest suite (no API keys / cluste
 
 ## Key conventions
 
-- **Versions stay in sync.** All three product `plugin.json` files
-  (`.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`), the Claude `marketplace.json`
-  plugin entry, and every skill's `metadata.version` must all match. This is the single
-  source of truth for the release and is enforced by `tests/structural/test_frontmatter.py`
-  and `test_plugin_structure.py`.
+- **Versions stay in sync — the repo-root `VERSION` file is the single source of truth.**
+  All three product `plugin.json` files (`.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`),
+  the Claude `marketplace.json` plugin entry, and every skill's `metadata.version` must match
+  `VERSION`. Don't hand-edit them — run `./scripts/sync-version.sh` (or `./scripts/sync-version.sh
+  <new>` to bump) to propagate, then `make test` to enforce it (`test_version_file_is_source_of_truth`,
+  plus `test_frontmatter.py` / `test_plugin_structure.py`).
 - **Multi-platform manifests are hand-written, not generated.** One canonical source
   (`zymtrace/skills/`); each tool gets its own `plugin.json` (inside `zymtrace/`) and a
   repo-root marketplace file, all pointing at the same `skills/`. They differ only in
@@ -108,7 +109,7 @@ No API keys, cluster, or network access are needed.
      What this skill does and when to use it.
      Trigger phrases: "phrase one", "phrase two", ...
    metadata:
-     version: "26.5.0"         # must match plugin.json
+     version: "26.5.0"         # must match the VERSION file (run ./scripts/sync-version.sh)
      author: zymtrace
      repository: https://github.com/zystem-io/zymtrace-skills
      tags: zymtrace,...
@@ -119,13 +120,29 @@ No API keys, cluster, or network access are needed.
    and `chmod +x` the scripts.
 3. Add `<skill-name>` to `REQUIRED_SKILLS` in `tests/constants.py`.
 4. Add a row to the skills table in `README.md`.
-5. Run `make test`.
+5. Run `./scripts/sync-version.sh` so the new skill's `metadata.version` matches `VERSION`.
+6. Run `make test`.
 
 ## Releasing a new version
 
-Bump the version in **all** of: the three product manifests
-`zymtrace/.claude-plugin/plugin.json`, `zymtrace/.codex-plugin/plugin.json`,
-`zymtrace/.cursor-plugin/plugin.json`; the `.claude-plugin/marketplace.json` plugin entry;
-and every skill's `metadata.version`. (The Codex and Cursor marketplace files carry no
-version field — version lives in their `plugin.json`.) Run `make test` to confirm they're
-in lockstep, then tag `v<major>.<minor>.<patch>`.
+**Edit the `VERSION` file and commit it to `main`. That's the whole release step.**
+
+```bash
+echo 26.6.0 > VERSION
+git commit -am "release 26.6.0" && git push   # to main
+```
+
+The **Sync version** GitHub Actions workflow (`.github/workflows/sync-version.yml`) fires on any
+`VERSION` change pushed to `main`: it runs `scripts/sync-version.sh` to propagate the version into
+the three product `plugin.json` files, the `.claude-plugin/marketplace.json` plugin entry, and every
+skill's `metadata.version`, then commits the result back to `main`. The follow-up commit runs the
+structural tests (which enforce that everything matches `VERSION`); the bare `VERSION` commit itself is
+skipped via `paths-ignore`, so you never see a red check mid-bump. (The Codex and Cursor marketplace
+files carry no version field — version lives in their `plugin.json`.)
+
+You don't run anything by hand. `scripts/sync-version.sh` exists for CI (and is runnable locally —
+`./scripts/sync-version.sh [new-version]` — if you ever want to propagate without pushing).
+
+**Requires** the workflow to be able to push to `main` (`contents: write`, already set). If `main`
+is a protected branch that blocks Actions pushes, either allow the `github-actions` bot or do the
+bump on a branch and run the script locally before the PR.
