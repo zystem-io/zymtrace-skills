@@ -1,7 +1,9 @@
 name: Structural tests
 
 on:
-  push:                 # run on every branch push
+  push:                 # run on every branch push...
+    paths-ignore:       # ...except a bare VERSION bump — the Sync version workflow
+      - "VERSION"       # propagates it, and its follow-up commit runs these tests green
   pull_request:         # and on PRs (covers forks)
   workflow_dispatch:    # and on-demand from the Actions tab
 

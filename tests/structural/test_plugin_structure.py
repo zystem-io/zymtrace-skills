@@ -10,6 +10,8 @@ from tests.conftest import (
     PRODUCT_PLUGIN_JSONS,
     REPO_ROOT,
     SKILLS_DIR,
+    VERSION_FILE,
+    parse_frontmatter,
 )
 from tests.constants import REQUIRED_SKILLS
 
@@ -170,3 +172,29 @@ def test_cursor_marketplace_source_shape():
     entry = next(item for item in data["plugins"] if item["name"] == "zymtrace")
     assert entry["source"] == "zymtrace"
     assert (REPO_ROOT / entry["source"]).resolve().is_dir()
+
+
+def test_version_file_is_source_of_truth():
+    """The repo-root VERSION file is the single source of truth; everything matches it.
+
+    Bump with `scripts/sync-version.sh` (see CLAUDE.md). This catches a manual edit that
+    drifted from VERSION, or a file the sync script missed.
+    """
+    version = VERSION_FILE.read_text().strip()
+    assert re.match(r"^\d+\.\d+\.\d+$", version), f"VERSION is not semver: {version!r}"
+
+    for product, path in PRODUCT_PLUGIN_JSONS.items():
+        v = json.loads(path.read_text())["version"]
+        assert v == version, f"{product} plugin.json version {v} != VERSION {version}"
+
+    # Only the Claude marketplace carries a version (Codex/Cursor marketplaces don't).
+    mkt = json.loads(PRODUCT_MARKETPLACE_JSONS["claude"].read_text())
+    entry = next(e for e in mkt["plugins"] if e["name"] == "zymtrace")
+    assert entry["version"] == version, (
+        f"marketplace.json version {entry['version']} != VERSION {version}"
+    )
+
+    for skill in REQUIRED_SKILLS:
+        fm = parse_frontmatter(SKILLS_DIR / skill / "SKILL.md")
+        v = str(fm["metadata"]["version"])
+        assert v == version, f"{skill} metadata.version {v} != VERSION {version}"

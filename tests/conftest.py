@@ -12,6 +12,9 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_ROOT = REPO_ROOT / "zymtrace"
 SKILLS_DIR = PLUGIN_ROOT / "skills"
+# Single source of truth for the release version. Bump with scripts/sync-version.sh,
+# which propagates it to every manifest and skill; the structural tests enforce the match.
+VERSION_FILE = REPO_ROOT / "VERSION"
 PLUGIN_JSON = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE_JSON = REPO_ROOT / ".claude-plugin" / "marketplace.json"
 

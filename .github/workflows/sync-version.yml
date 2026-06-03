@@ -1,0 +1,38 @@
+name: Sync version
+
+# Bump a release by editing the repo-root VERSION file and committing it to main.
+# This workflow propagates that version into all product manifests and every skill's
+# metadata.version (via scripts/sync-version.sh) and commits the result back — so you
+# never run the script by hand.
+
+on:
+  push:
+    branches: [main]
+    paths: ["VERSION"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Propagate VERSION to manifests and skills
+        run: bash scripts/sync-version.sh
+
+      - name: Commit propagated version
+        run: |
+          if git diff --quiet; then
+            echo "Manifests and skills already match VERSION — nothing to commit."
+            exit 0
+          fi
+          version="$(tr -d '[:space:]' < VERSION)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "bump to ${version}"
+          git push
