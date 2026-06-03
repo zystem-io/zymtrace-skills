@@ -15,6 +15,21 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 PLUGIN_JSON = PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE_JSON = REPO_ROOT / ".claude-plugin" / "marketplace.json"
 
+# Per-platform manifests. One canonical source (zymtrace/skills/); each supported
+# product gets a hand-written plugin manifest inside the plugin dir and a root-level
+# marketplace entry. All point at the same skills/. Kept in sync by the structural
+# tests in test_plugin_structure.py.
+PRODUCT_PLUGIN_JSONS = {
+    "claude": PLUGIN_ROOT / ".claude-plugin" / "plugin.json",
+    "codex": PLUGIN_ROOT / ".codex-plugin" / "plugin.json",
+    "cursor": PLUGIN_ROOT / ".cursor-plugin" / "plugin.json",
+}
+PRODUCT_MARKETPLACE_JSONS = {
+    "claude": REPO_ROOT / ".claude-plugin" / "marketplace.json",
+    "codex": REPO_ROOT / ".agents" / "plugins" / "marketplace.json",
+    "cursor": REPO_ROOT / ".cursor-plugin" / "marketplace.json",
+}
+
 
 def parse_frontmatter(path: Path):
     """Return the parsed YAML frontmatter dict for a markdown file, or None."""

@@ -1,8 +1,8 @@
 # zymtrace-skills
 
-Claude Code skills for installing, upgrading, and operating [**zymtrace**](https://zymtrace.com) — the continuous CPU and GPU profiling and optimization platform.
+Skills for installing, upgrading, and operating [**zymtrace**](https://zymtrace.com) — the continuous CPU and GPU profiling and optimization platform. Works in **Claude Code**, **OpenAI Codex**, and **Cursor** from the same source.
 
-Once installed, describe what you want in plain English and Claude Code handles the rest:
+Once installed, describe what you want in plain English and your coding agent handles the rest:
 
 ```
 "install zymtrace on my eks cluster"
@@ -15,10 +15,11 @@ Once installed, describe what you want in plain English and Claude Code handles 
 "analyze the gpu flamegraph over the last 1 hour and suggest solutions"   # ← the universal starter
 ```
 
+<video src="https://github.com/user-attachments/assets/32a934b8-9709-47a3-898c-68586150f24c" width="90%"></video>
+
 ## What's inside
 
 
-<img width="886" height="514" alt="Image" src="https://github.com/user-attachments/assets/e0e0dcba-2496-4ea6-8dbf-1a519b403546" />
 
 
 | Skill | What it does |
@@ -32,28 +33,52 @@ Once installed, describe what you want in plain English and Claude Code handles 
 | [`configure-zymtrace-mcp`](zymtrace/skills/configure-zymtrace-mcp/) | Connect Claude Code (or any MCP client) to the zymtrace MCP server so you can analyze profiles with natural-language queries. |
 | [`analyze-zymtrace-workload`](zymtrace/skills/analyze-zymtrace-workload/) | Investigate a GPU or CPU workload through the MCP — classify (inference vs training), pull GPU + matching CPU flamegraphs, recommend a fix. |
 
-### Agent
+### Agent (Claude Code only)
+
+> The skills work in all three tools. The subagent below is currently only supported on Claude Code.
 
 | Agent | What it does |
 |-------|-------------|
 | [`zymtrace-perf-engineer`](zymtrace/agents/zymtrace-perf-engineer.md) | Autonomous, hands-off performance investigation. Identifies the entity (script for Python, container, host, or k8s pod/deployment), pulls its metrics, then the CPU flamegraph — and the GPU flamegraph when it's a GPU workload — and returns a finished recap without stopping to confirm each step. Runs several in parallel. Invoke it by name (e.g. "use the zymtrace-perf-engineer to analyze my vLLM GPU workload"). |
 
 
+## Supported tools
+
+The same skills install into any of these agents. The repo carries a per-tool manifest; there's one canonical copy of the skills underneath.
+
+| Tool | Install |
+|------|---------|
+| **Claude Code** | `claude plugin marketplace add zystem-io/zymtrace-skills` → `claude plugin install zymtrace@zymtrace-skills` |
+| **OpenAI Codex** | `codex plugin marketplace add zystem-io/zymtrace-skills`, then install **zymtrace** via `/plugins` |
+| **Cursor** | Settings → **Plugins** → **Team Marketplaces** → **Import** → paste the repo URL |
+
 ## Install
 
-### Recommended — as a Claude Code plugin
+### Claude Code
 
-Inside any Claude Code session, run:
+Inside any Claude Code session (or your terminal), run:
 
 ```bash
 claude plugin marketplace add zystem-io/zymtrace-skills
-
 claude plugin install zymtrace@zymtrace-skills
 ```
 
-That's it. Skills become available as `/zymtrace:install-zymtrace-backend`, `/zymtrace:upgrade-zymtrace-backend`, and so on.
+That's it. Skills become available as `/zymtrace:install-zymtrace-backend`, `/zymtrace:upgrade-zymtrace-backend`, and so on. (`claude plugin marketplace list` confirms the marketplace was added, but it's the `install` step that enables the skills.)
 
-(`claude plugin marketplace list` is handy to confirm the marketplace was added, but it's the `install` step that actually enables the skills.)
+### OpenAI Codex
+
+```bash
+codex plugin marketplace add zystem-io/zymtrace-skills
+```
+
+Then run `/plugins` in Codex and install **zymtrace** from the marketplace.
+
+### Cursor
+
+1. Open **Dashboard → Settings → Plugins**.
+2. Under **Team Marketplaces**, click **Import**.
+3. Paste the repository URL `https://github.com/zystem-io/zymtrace-skills` and continue.
+4. Review the parsed **zymtrace** plugin, set access/name as you like, and save.
 
 ## How to use
 
@@ -69,9 +94,9 @@ Describe what you want — Claude Code routes to the right skill automatically. 
 
 Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat — every change is confirmed with you first.
 
-### The agent (hands-off mode)
+### The agent (hands-off mode, Claude Code only)
 
-For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent — just name it in your request:
+For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent (Claude Code only) — name it in your request:
 
 ```
 "use the zymtrace-perf-engineer to analyze my vLLM GPU workload over the last hour"
@@ -100,13 +125,13 @@ The command also prints a live per-component token-cost breakdown (always-on vs 
 
 ## Contributing
 
-Clone the repo and install the plugin from the local path — loads as a plugin, so `${CLAUDE_PLUGIN_ROOT}` and the helper scripts resolve:
+Clone the repo and install the plugin from the local checkout — loads as a plugin, so `${CLAUDE_PLUGIN_ROOT}` and the helper scripts resolve:
 
 ```bash
 git clone https://github.com/zystem-io/zymtrace-skills.git
 cd zymtrace-skills
-claude plugin validate ./zymtrace              # fast check: manifest parses, no install
-claude plugin marketplace add "$PWD"           # register the local checkout as a marketplace
+claude plugin validate ./zymtrace              # fast check: manifest parses (plugin root is zymtrace/)
+claude plugin marketplace add "$PWD"           # register the repo-root marketplace (zymtrace-skills)
 claude plugin install zymtrace@zymtrace-skills # install from it; restart to apply
 ```
 

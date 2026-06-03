@@ -77,9 +77,14 @@ across metrics and both flamegraphs — paraphrasing it is the most common way a
 
 ## Data source policy
 
-Profile and flamegraph data comes from the **MCP only**. **Never query ClickHouse or any backend
-DB directly** (no `clickhouse-client`, `kubectl exec` into the pod, raw SQL) — it bypasses access
-controls and the schema is easy to get subtly wrong. If the MCP is unavailable:
+Profile and flamegraph data comes from the **MCP only**. Two hard prohibitions:
+- **Never query ClickHouse or any backend DB directly** (no `clickhouse-client`, `kubectl exec` into
+  the pod, raw SQL) — it bypasses access controls and the schema is easy to get subtly wrong.
+- **Never analyze local/exported profile files** (`.pftrace`, `profile_*.json`) as a substitute for
+  the MCP — they aren't tied to the user's instance/filter. No MCP + no URL → ask for the URL, don't
+  fall back to files on disk.
+
+If the MCP is unavailable:
 
 - **Never configured** (no zymtrace entry in `claude mcp list`) → stop and tell the user to run
   **configure-zymtrace-mcp** first; first-time setup needs gateway discovery + token generation
@@ -92,7 +97,10 @@ controls and the schema is easy to get subtly wrong. If the MCP is unavailable:
   workload pull both sides with the same filter, as above. **Auth is conditional:** many
   deployments run with service-token auth **off** — send no credentials then; only if the MCP
   config carries a token, reuse that same one via its env var (e.g. `$ZYMTRACE_MCP_TOKEN`, never
-  inlined). Note in the recap that data came from the REST fallback so the user fixes the MCP.
+  inlined). If the API requires auth (`401`/`unauthorized`) and you have no token in context, stop
+  and ask the user to generate a zymtrace **service token**
+  (<https://docs.zymtrace.com/authentication/service-tokens>) — never try to bypass auth. Note in
+  the recap that data came from the REST fallback so the user fixes the MCP.
 
 (The REST API is also the normal path for **metrics** when no MCP metrics tool exists — that's
 not a fallback; see methodology step 2.)

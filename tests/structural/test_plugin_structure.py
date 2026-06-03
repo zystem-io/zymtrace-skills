@@ -5,7 +5,12 @@ import re
 
 import pytest
 
-from tests.conftest import REPO_ROOT
+from tests.conftest import (
+    PRODUCT_MARKETPLACE_JSONS,
+    PRODUCT_PLUGIN_JSONS,
+    REPO_ROOT,
+    SKILLS_DIR,
+)
 from tests.constants import REQUIRED_SKILLS
 
 
@@ -86,3 +91,82 @@ def test_readme_lists_all_skills():
     extra = documented - required
     assert not missing, f"skills missing from the README table: {sorted(missing)}"
     assert not extra, f"README references skills not in REQUIRED_SKILLS (drift): {sorted(extra)}"
+
+
+# --- Multi-platform manifests (Claude, Codex, Cursor) --------------------------
+#
+# One canonical source (zymtrace/skills/). Each product has a hand-written plugin
+# manifest inside zymtrace/ and a root-level marketplace entry, all pointing at the
+# same skills/. These tests catch drift between them.
+
+
+@pytest.mark.parametrize("product,path", PRODUCT_PLUGIN_JSONS.items())
+def test_product_plugin_jsons(product, path):
+    """Each supported product has a valid plugin manifest for the shared plugin root."""
+    assert path.exists(), f"{product} plugin manifest not found at {path}"
+    data = json.loads(path.read_text())
+    assert data["name"] == "zymtrace", f"{product} plugin.json name should be 'zymtrace'"
+    for field in ("version", "description"):
+        assert data.get(field), f"{product} plugin.json field '{field}' is missing or empty"
+    parts = data["version"].split(".")
+    assert len(parts) == 3 and all(p.isdigit() for p in parts), (
+        f"{product} version should be semver, got: {data['version']}"
+    )
+
+
+@pytest.mark.parametrize("product,path", PRODUCT_MARKETPLACE_JSONS.items())
+def test_product_marketplace_jsons(product, path):
+    """Each supported product has a repo-level marketplace entry for zymtrace/."""
+    assert path.exists(), f"{product} marketplace not found at {path}"
+    data = json.loads(path.read_text())
+    assert data["name"] == "zymtrace-skills", f"{product} marketplace name should be 'zymtrace-skills'"
+    assert isinstance(data["plugins"], list) and data["plugins"], (
+        f"{product} marketplace plugins must be a non-empty list"
+    )
+    assert any(entry["name"] == "zymtrace" for entry in data["plugins"]), (
+        f"{product} marketplace has no 'zymtrace' plugin entry"
+    )
+
+
+def test_product_plugin_versions_in_sync():
+    """Every product plugin.json carries the same version (Claude is the source of truth)."""
+    claude_version = json.loads(PRODUCT_PLUGIN_JSONS["claude"].read_text())["version"]
+    for product, path in PRODUCT_PLUGIN_JSONS.items():
+        version = json.loads(path.read_text())["version"]
+        assert version == claude_version, (
+            f"{product} plugin.json version {version} != claude {claude_version}"
+        )
+
+
+@pytest.mark.parametrize(
+    "product", [p for p in PRODUCT_PLUGIN_JSONS if p != "claude"]
+)
+def test_product_skills_pointer_resolves(product):
+    """Codex/Cursor manifests declare a `skills` pointer that resolves to zymtrace/skills/."""
+    data = json.loads(PRODUCT_PLUGIN_JSONS[product].read_text())
+    assert data.get("skills") == "./skills/", (
+        f"{product} plugin.json should declare \"skills\": \"./skills/\""
+    )
+    resolved = (PRODUCT_PLUGIN_JSONS[product].parent.parent / "skills").resolve()
+    assert resolved == SKILLS_DIR.resolve() and resolved.is_dir(), (
+        f"{product} skills pointer does not resolve to {SKILLS_DIR}"
+    )
+
+
+def test_codex_marketplace_entry_shape():
+    """Codex/generic marketplace entry: local source + install policy, no auth (MCP is separate)."""
+    data = json.loads(PRODUCT_MARKETPLACE_JSONS["codex"].read_text())
+    entry = next(item for item in data["plugins"] if item["name"] == "zymtrace")
+    assert entry["source"] == {"source": "local", "path": "./zymtrace"}
+    assert entry["policy"]["installation"] == "AVAILABLE"
+    assert entry["policy"]["authentication"] == "NONE"
+    assert entry["category"]
+    assert (REPO_ROOT / entry["source"]["path"]).resolve().is_dir()
+
+
+def test_cursor_marketplace_source_shape():
+    """Cursor marketplace source is a repo-root-relative string that resolves to a dir."""
+    data = json.loads(PRODUCT_MARKETPLACE_JSONS["cursor"].read_text())
+    entry = next(item for item in data["plugins"] if item["name"] == "zymtrace")
+    assert entry["source"] == "zymtrace"
+    assert (REPO_ROOT / entry["source"]).resolve().is_dir()

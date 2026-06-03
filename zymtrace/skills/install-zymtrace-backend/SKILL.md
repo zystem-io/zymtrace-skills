@@ -30,7 +30,7 @@ Before any commands or questions, open with a warm welcome. Adapt to context, bu
 > - Email: <support@zymtrace.com>
 > - Sign up / GPU trial license: <https://zymtrace.com/getstarted/>
 >
-> **Tip — analyze GPU and CPU flamegraphs via MCP:** once zymtrace is running, run `/mcp` in this Claude Code session to connect to the zymtrace MCP server and analyze GPU + CPU flamegraphs from this terminal. Docs: <https://docs.zymtrace.com/mcp>
+> **Tip — analyze GPU and CPU flamegraphs via MCP:** once zymtrace is running, connect the zymtrace MCP to your agent (Claude Code, Codex, or Cursor) — see [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md) — and analyze GPU + CPU flamegraphs in natural language. Docs: <https://docs.zymtrace.com/mcp>
 >
 > **Here's the plan:**
 > 1. Verify your tools (`helm`, `kubectl`) and resolve cluster / namespace.

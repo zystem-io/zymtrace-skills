@@ -29,7 +29,7 @@ Open with a short welcome before any commands or questions:
 > - Community Slack: <https://join.slack.com/t/zymtrace/shared_invite/zt-3fdidjufl-q~NHxDzQlzal2B9mujfaoQ>
 > - Email: <support@zymtrace.com>
 >
-> **Tip — analyze GPU and CPU flamegraphs via MCP:** once profiles start flowing, run `/mcp` in this Claude Code session to connect to the zymtrace MCP server and analyze GPU + CPU flamegraphs from this terminal. Docs: <https://docs.zymtrace.com/mcp>
+> **Tip — analyze GPU and CPU flamegraphs via MCP:** once profiles start flowing, connect the zymtrace MCP to your agent (Claude Code, Codex, or Cursor) — see [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md) — and analyze GPU + CPU flamegraphs in natural language. Docs: <https://docs.zymtrace.com/mcp>
 >
 > **Here's the plan:**
 > 1. Verify your tools and locate the backend gateway.

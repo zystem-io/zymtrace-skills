@@ -19,7 +19,7 @@ metadata:
 
 Connection setup lives in [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md). This skill assumes the MCP is already connected.
 
-**Optional pairing — GitHub MCP**: if the user also has the GitHub MCP connected (`claude mcp list` shows both) **and** asks for code-level pointers, Claude can locate the hot frame in their repo and reference a specific `<file>:<line>` in the fix. This is a suggestion, not a default — many users don't want or need code access from the session. Mention the option once if both MCPs are available; respect the answer either way.
+**Optional pairing — GitHub MCP**: if the user also has the GitHub MCP connected (your client's MCP list shows both) **and** asks for code-level pointers, you can locate the hot frame in their repo, reference a specific `<file>:<line>` in the fix, and offer to open a pull request with the change. This is a suggestion, not a default — many users don't want or need code access from the session. Mention the option once if both MCPs are available; respect the answer either way.
 
 ## Standard starter prompt (for customers who don't know what to ask)
 
@@ -38,32 +38,34 @@ For any of these: default to the last 1 hour if no time range is given, default 
 
 **First, establish which zymtrace instance you're analyzing — you need its zymtrace URL in context.**
 
-```bash
-claude mcp list | grep -i zymtrace
-```
+Check whether a zymtrace MCP server is connected in your client (in Claude Code, `claude mcp list | grep -i zymtrace`; in Codex or Cursor, the equivalent MCP-list in that tool):
 
-- **Listed** → MCP is connected; proceed.
-- **Not listed** → route to [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md) to connect. It needs the zymtrace URL: if the user already gave one in this conversation, use it; otherwise **ask** (*"What's your zymtrace URL? — e.g. `https://zymtrace.your-company.com`"*). Never guess or assume `localhost`.
+- **Connected** → proceed.
+- **Not connected** → route to [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/SKILL.md) to connect. It needs the zymtrace URL: if the user already gave one in this conversation, use it; otherwise **ask** (*"What's your zymtrace URL? — e.g. `https://zymtrace.your-company.com`"*). Never guess or assume `localhost`.
+
+> **Data comes only from the live zymtrace MCP for the user's instance** — metrics and flamegraphs both. **Never** substitute local profile files (`.pftrace`, `profile_*.json`) — they aren't tied to the user's instance/filter and mislead. If the MCP isn't connected, connect it first (Pre-flight); don't analyze files on disk or work around the MCP.
 
 ## The cross-view protocol
 
-The MCP handles the analysis; you handle the discipline of asking for both sides.
+The MCP handles the analysis; you handle the discipline of asking for both sides. Everything below — metrics and flamegraphs — comes from the **MCP**, so the MCP must be connected **first** (Pre-flight). If it isn't, connect it before anything else; don't fetch metrics or profiles any other way.
 
-1. **Ask the MCP to investigate the workload** the customer named (executable / container / pod / time range / model — whatever signals they gave). The MCP will pick up the right scope.
+1. **Pull the workload's metrics first, for context.** Ask the MCP for the entity's metrics — GPU utilization / memory / SM efficiency for GPU work, plus CPU utilization — to establish whether the workload is GPU- or host-bound and which view will be informative. Carry these numbers into the recap; they frame the flamegraph findings.
 
-2. **Pull whichever view the customer's question implies first** — GPU view for a GPU-shaped question, CPU view for a CPU-shaped one. Let the MCP narrate what's hot.
+2. **Ask the MCP to investigate the workload** the customer named (executable / container / pod / time range / model — whatever signals they gave). The MCP picks up the right scope.
 
-3. **Then explicitly ask the MCP for the OPPOSITE view of the same workload, with the same filter.** Use the exact filter values the MCP locked onto in step 2 — same executable, same container, same time range. Don't hand-wave the filter; the cross-view is only useful when the slice matches.
+3. **Pull whichever view the customer's question implies first** — GPU view for a GPU-shaped question, CPU view for a CPU-shaped one. Let the MCP narrate what's hot.
 
-4. **Cross-reference the two views.** Common reveals:
+4. **Then explicitly ask the MCP for the OPPOSITE view of the same workload, with the same filter.** Use the exact filter values the MCP locked onto — same executable, same container, same time range. Don't hand-wave the filter; the cross-view is only useful when the slice matches.
+
+5. **Cross-reference the two views** (against the step-1 metrics). Common reveals:
    - GPU at 95% but tokens/sec underwhelming → look at CPU for tokenizer / sampling / Python-side overhead.
    - GPU at 60% utilization → the host is the bottleneck. The CPU view will name it.
    - Specific GPU kernel dominant → the CPU view often shows the launcher / scheduler that's calling it. Useful for understanding launch-overhead vs kernel-time tradeoffs.
    - CPU dominated by `cudaMemcpy*` / `aten::*` synchronization → the workload is sync-bound on device transfers; the GPU view will show idle stretches.
 
-5. **Write the recap using the output template below.** Use the data the MCP returned — kernel names, percentages, hot stacks, the call tree from the CPU view, and the kernels triggered on the GPU side — to fill the template. Don't paraphrase the MCP's suggestions verbatim; synthesize across the two views into a concrete next step. If the MCP didn't surface a suggestion, you still produce one — grounded in the returned data, not invented.
+6. **Write the recap using the output template below.** Use the data the MCP returned — metrics, kernel names, percentages, hot stacks, the call tree from the CPU view, and the kernels triggered on the GPU side — to fill the template. Don't paraphrase the MCP's suggestions verbatim; synthesize into a concrete next step. If the MCP didn't surface a suggestion, you still produce one — grounded in the returned data, not invented.
 
-If the **GitHub MCP** is also connected, take the recommendation one step further: locate the hot frame in the customer's repo (file + line) and propose the specific edit. The recap's `Fix:` block then becomes an actual `<file>:<line>` reference with a code snippet, not a generic instruction.
+If the **GitHub MCP** is also connected, take the recommendation one step further: locate the hot frame in the customer's repo (file + line) and propose the specific edit, so the recap's `Fix:` block becomes an actual `<file>:<line>` reference with a code snippet. Then **ask whether to open a pull request** with the change — and only open it on a yes. Never push a PR unprompted.
 
 ## Output template
 
@@ -160,8 +162,10 @@ MCP returned them or they're well-known order-of-magnitude estimates.>
 
 ## Done
 
+- [ ] Workload metrics pulled first (GPU/CPU utilization, memory, SM efficiency) and carried into the recap as context.
 - [ ] Both GPU **and** CPU flamegraphs pulled for the **same** filter (same executable / container / time).
 - [ ] The cross-view interpretation given — which side is the constraint, and why.
+- [ ] If the GitHub MCP is connected and the fix is code-level: offered to open a pull request, and opened one only on the user's yes.
 - [ ] Recap follows the **Output template** above: title, observed call tree (with `→` GPU annotations + `⚠️` sync markers), CPU cross-check, Key Findings, 🔴 top issues block (max 3, each with `Observation:` + `Fix:`), 🟡 follow-up block (max 2 one-liners), Expected Impact.
 - [ ] **Every** 🔴 issue has a concrete `**Fix:**` block — grounded in the actual flamegraph data, never punted ("ask me if you want suggestions") and never invented. Same for the 🟡 follow-ups: each has a `**Fix:**` after the em-dash.
 - [ ] No more than 3 🔴 issues and no more than 2 🟡 follow-ups. If you have more, drop the lowest-priority ones; the customer can re-query.
@@ -178,5 +182,6 @@ MCP returned them or they're well-known order-of-magnitude estimates.>
 ## Security constraints
 
 - **Always** ground the recommendation in the data the MCP returned (kernel names, percentages, hot stacks). Synthesize across the two views — but don't fabricate signals the data doesn't show.
+- **Never** analyze local profile files (`.pftrace`, `profile_*.json`) as a substitute for the MCP — see the data-source rule in Pre-flight.
 - **Never** declare the investigation done after only one view. Pulling the opposite side with the same filter is the load-bearing step.
 - **Never** recommend enabling PC sampling on a workload (which requires `privileged: true`) without flagging the security implication. See [install-zymtrace-profiler § PC sampling](../install-zymtrace-profiler/reference.md#pc-sampling).
