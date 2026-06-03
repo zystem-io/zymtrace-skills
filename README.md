@@ -15,9 +15,7 @@ Once installed, describe what you want in plain English and your coding agent ha
 "analyze the gpu flamegraph over the last 1 hour and suggest solutions"   # ← the universal starter
 ```
 
-<video src="https://github.com/user-attachments/assets/32a934b8-9709-47a3-898c-68586150f24c
-
-" controls muted loop width="90%"></video>
+<video src="https://github.com/user-attachments/assets/32a934b8-9709-47a3-898c-68586150f24c" width="90%"></video>
 
 ## What's inside
 
