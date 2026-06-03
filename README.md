@@ -2,6 +2,8 @@
 
 Skills for installing, upgrading, and operating [**zymtrace**](https://zymtrace.com) — the continuous CPU and GPU profiling and optimization platform. Works in **Claude Code**, **OpenAI Codex**, and **Cursor** from the same source.
 
+📚 **Docs:** <https://docs.zymtrace.com/ai-agent-skills/>
+
 Once installed, describe what you want in plain English and your coding agent handles the rest:
 
 ```
@@ -156,7 +158,10 @@ The structural suite needs no API keys, cluster, or network, and runs in CI on e
 
 ## What's next
 
-Once your backend is up and the profiler is reporting, run `/mcp` in Claude Code to connect to the zymtrace MCP server and analyze GPU and CPU flamegraphs straight from the terminal. Docs: <https://docs.zymtrace.com/mcp>
+Once your backend is up and the profiler is reporting, connect the zymtrace MCP and analyze GPU and CPU flamegraphs straight from your agent.
+
+- AI Agent Skills docs: <https://docs.zymtrace.com/ai-agent-skills/>
+- MCP setup: <https://docs.zymtrace.com/mcp>
 
 ## Support 
 
