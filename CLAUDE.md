@@ -54,9 +54,9 @@ tests/                           # Structural pytest suite (no API keys / cluste
   the agent resolves those when reading a known file.)
 - **Scripts are executable** (`chmod +x`) and invoked as `bash ${CLAUDE_PLUGIN_ROOT}/...`.
 - **Skill `name` == directory name.**
-- **Frontmatter** must include `name` and `description` (with `Trigger phrases:`) — the only
-  required fields. zymtrace skills also carry optional `metadata.author/repository/tags`; no
-  per-skill `version` (the plugin is versioned, not the skill).
+- **Frontmatter is just `name` and `description`** (with `Trigger phrases:`) — the only fields
+  skills use. No `metadata` block (author/repository/keywords live in `plugin.json`); no per-skill
+  version (the plugin is the versioned unit).
 - **Secrets never touch disk or chat** — see each skill's `## Security constraints`.
 - **Helm conventions** (namespace/release resolution, the single canonical values file,
   `--reset-then-reuse-values`, backups) are centralized in
@@ -109,10 +109,6 @@ No API keys, cluster, or network access are needed.
    description: |
      What this skill does and when to use it.
      Trigger phrases: "phrase one", "phrase two", ...
-   metadata:                   # optional, informational; no per-skill version
-     author: zymtrace
-     repository: https://github.com/zystem-io/zymtrace-skills
-     tags: zymtrace,...
    ---
    ```
 2. Address any scripts/reference files via `${CLAUDE_PLUGIN_ROOT}/skills/<skill-name>/...`

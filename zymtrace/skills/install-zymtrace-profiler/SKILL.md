@@ -3,11 +3,6 @@ name: install-zymtrace-profiler
 description: |
   Use when installing the zymtrace profiler agent on Kubernetes (Helm DaemonSet), Docker, or as a binary with systemd. Covers CPU-only profiling, CUDA GPU profiling (CUDA 12.x or higher required; CUDA 11.x and below not supported), GPU metrics (utilization, memory, temperature, SM efficiency, Tensor Core, PCIe), framework-specific metrics (vLLM, SGLang, NVIDIA Dynamo-Triton), and air-gapped installs via a custom image registry. Connects the agent to an existing backend gateway.
   Trigger phrases: "install profiler", "install zymtrace profiler", "install zymtrace agent", "deploy the profiler", "deploy zymtrace DaemonSet", "set up GPU profiling", "set up CUDA profiling", "profile my GPU workloads", "install profiler on EKS / GKE / Slurm / bare-metal", "install profiler on every node", "start collecting profiles".
-metadata:
-  author: zymtrace
-  repository: https://github.com/zystem-io/zymtrace-skills
-  tags: zymtrace,profiling,kubernetes,helm,daemonset,docker,binary,gpu,cuda,nvidia,install,profiler
-  tools: helm,kubectl,curl,docker
 ---
 
 # Install zymtrace Profiler

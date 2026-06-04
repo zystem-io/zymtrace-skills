@@ -3,11 +3,6 @@ name: analyze-zymtrace-workload
 description: |
   Use when investigating a GPU or CPU workload through the zymtrace MCP. The MCP does most of the analysis; this skill enforces the cross-view — always pull the matching opposite-side flamegraph (CPU for GPU workloads, GPU for CPU workloads) with the same filter. Most bottlenecks hide on the side the customer didn't ask about.
   Trigger phrases: "analyze my GPU workload", "where's the bottleneck in vllm", "investigate my training job", "find the hot kernel", "GPU isn't saturated", "investigate using flamegraph", "use zymtrace mcp to analyze".
-metadata:
-  author: zymtrace
-  repository: https://github.com/zystem-io/zymtrace-skills
-  tags: zymtrace,mcp,profiling,gpu,cpu,flamegraph,analysis,investigation
-  tools: claude
 ---
 
 # Analyze zymtrace Workload

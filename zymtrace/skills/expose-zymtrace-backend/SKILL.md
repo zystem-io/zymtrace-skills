@@ -3,11 +3,6 @@ name: expose-zymtrace-backend
 description: |
   Use when configuring external/internal network exposure for an already-installed zymtrace backend — adding NodePort, LoadBalancer, or Ingress (NGINX or AWS ALB) with TLS. Edits the customer's canonical values file in place and applies via `helm upgrade --install`.
   Trigger phrases: "expose zymtrace", "expose the gateway", "make zymtrace accessible", "add ingress to zymtrace", "set up ALB for zymtrace", "internal ALB for zymtrace", "set up NGINX ingress for zymtrace", "add TLS to zymtrace", "get a real hostname for zymtrace", "add NodePort to zymtrace", "connect agents from another cluster".
-metadata:
-  author: zymtrace
-  repository: https://github.com/zystem-io/zymtrace-skills
-  tags: zymtrace,kubernetes,helm,ingress,nodeport,loadbalancer,tls,alb,nginx
-  tools: helm,kubectl,curl,aws
 ---
 
 # Expose zymtrace Backend
