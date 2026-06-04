@@ -4,7 +4,6 @@ description: |
   Use when connecting a coding agent — Claude Code, OpenAI Codex, or Cursor — to the zymtrace MCP server so the user can analyze CPU and GPU flamegraphs through natural-language queries. Walks through finding the gateway URL, generating an auth token (if service-token auth is on), adding the server with the right command for the user's client, and verifying the connection. This skill is plumbing only — the analytical workflow lives in `analyze-zymtrace-workload`.
   Trigger phrases: "connect zymtrace MCP", "set up zymtrace MCP", "configure zymtrace MCP", "add zymtrace to /mcp", "connect Claude/Codex/Cursor to zymtrace", "/mcp doesn't show zymtrace", "zymtrace MCP token", "Cursor zymtrace integration", "set up the zymtrace AI assistant".
 metadata:
-  version: "26.5.0"
   author: zymtrace
   repository: https://github.com/zystem-io/zymtrace-skills
   tags: zymtrace,mcp,claude-code,codex,cursor,ai-assistant,setup

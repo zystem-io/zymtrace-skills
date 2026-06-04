@@ -4,8 +4,8 @@
 # This script propagates that version into every place it must appear:
 #   - the three product manifests (zymtrace/.claude-plugin, .codex-plugin, .cursor-plugin)
 #   - the Claude marketplace.json plugin entry (.claude-plugin/marketplace.json)
-#   - every skill's metadata.version (zymtrace/skills/*/SKILL.md)
-# (The Codex and Cursor marketplace files carry no version field — version lives in their plugin.json.)
+# Skills carry no version (the plugin is the versioned unit). The Codex and Cursor
+# marketplace files carry no version field either — version lives in their plugin.json.
 #
 # Usage:
 #   ./scripts/sync-version.sh            # propagate the current VERSION file to all manifests + skills
@@ -42,10 +42,6 @@ for f in "${json_files[@]}"; do
   echo "  updated $(basename "$(dirname "$f")")/$(basename "$f")"
 done
 
-# Skill frontmatter: metadata.version (a YAML "  version: "..."" line).
-for f in "$ROOT"/zymtrace/skills/*/SKILL.md; do
-  sed -i.bak -E 's/^([[:space:]]*)version: "[^"]*"/\1version: "'"$V"'"/' "$f" && rm -f "$f.bak"
-  echo "  updated skills/$(basename "$(dirname "$f")")/SKILL.md"
-done
+# Skills carry no version — the plugin is the versioned unit.
 
 echo "Done. Run 'make test' to verify lockstep."

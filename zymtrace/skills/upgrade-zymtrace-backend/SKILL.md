@@ -4,7 +4,6 @@ description: |
   Use when upgrading a zymtrace backend that's already deployed via Helm. Covers image-tag-only bumps, chart-version bumps, and combined upgrades. Handles the migration job, --reset-then-reuse-values requirement, rollback when --atomic fails, and post-upgrade verification.
   Trigger phrases: "upgrade zymtrace", "upgrade zymtrace backend", "bump zymtrace version", "update zymtrace to 26.5.0 / latest", "helm upgrade zymtrace", "upgrade the chart", "bump backend image tag", "move zymtrace to a new release", "patch zymtrace", "roll back zymtrace upgrade".
 metadata:
-  version: "26.5.0"
   author: zymtrace
   repository: https://github.com/zystem-io/zymtrace-skills
   tags: zymtrace,profiling,kubernetes,helm,upgrade,backend

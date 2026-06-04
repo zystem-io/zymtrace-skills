@@ -30,11 +30,11 @@ tests/                           # Structural pytest suite (no API keys / cluste
 ## Key conventions
 
 - **Versions stay in sync — the repo-root `VERSION` file is the single source of truth.**
-  All three product `plugin.json` files (`.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`),
-  the Claude `marketplace.json` plugin entry, and every skill's `metadata.version` must match
-  `VERSION`. Don't hand-edit them — run `./scripts/sync-version.sh` (or `./scripts/sync-version.sh
-  <new>` to bump) to propagate, then `make test` to enforce it (`test_version_file_is_source_of_truth`,
-  plus `test_frontmatter.py` / `test_plugin_structure.py`).
+  The plugin is the versioned unit; **skills carry no version**. All three product `plugin.json`
+  files (`.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/`) and the Claude `marketplace.json`
+  plugin entry must match `VERSION`. Don't hand-edit them — run `./scripts/sync-version.sh` (or
+  `./scripts/sync-version.sh <new>` to bump) to propagate, then `make test` to enforce it
+  (`test_version_file_is_source_of_truth`).
 - **Multi-platform manifests are hand-written, not generated.** One canonical source
   (`zymtrace/skills/`); each tool gets its own `plugin.json` (inside `zymtrace/`) and a
   repo-root marketplace file, all pointing at the same `skills/`. They differ only in
@@ -54,8 +54,9 @@ tests/                           # Structural pytest suite (no API keys / cluste
   the agent resolves those when reading a known file.)
 - **Scripts are executable** (`chmod +x`) and invoked as `bash ${CLAUDE_PLUGIN_ROOT}/...`.
 - **Skill `name` == directory name.**
-- **Frontmatter** must include `name`, `description` (with `Trigger phrases:`), and
-  `metadata.version`. zymtrace skills also carry `metadata.author/repository/tags/tools`.
+- **Frontmatter** must include `name` and `description` (with `Trigger phrases:`) — the only
+  required fields. zymtrace skills also carry optional `metadata.author/repository/tags`; no
+  per-skill `version` (the plugin is versioned, not the skill).
 - **Secrets never touch disk or chat** — see each skill's `## Security constraints`.
 - **Helm conventions** (namespace/release resolution, the single canonical values file,
   `--reset-then-reuse-values`, backups) are centralized in
@@ -108,20 +109,17 @@ No API keys, cluster, or network access are needed.
    description: |
      What this skill does and when to use it.
      Trigger phrases: "phrase one", "phrase two", ...
-   metadata:
-     version: "26.5.0"         # must match the VERSION file (run ./scripts/sync-version.sh)
+   metadata:                   # optional, informational; no per-skill version
      author: zymtrace
      repository: https://github.com/zystem-io/zymtrace-skills
      tags: zymtrace,...
-     tools: helm,kubectl,...
    ---
    ```
 2. Address any scripts/reference files via `${CLAUDE_PLUGIN_ROOT}/skills/<skill-name>/...`
    and `chmod +x` the scripts.
 3. Add `<skill-name>` to `REQUIRED_SKILLS` in `tests/constants.py`.
 4. Add a row to the skills table in `README.md`.
-5. Run `./scripts/sync-version.sh` so the new skill's `metadata.version` matches `VERSION`.
-6. Run `make test`.
+5. Run `make test`.
 
 ## Releasing a new version
 
@@ -134,8 +132,8 @@ git commit -am "release 26.6.0" && git push   # to main
 
 The **Sync version** GitHub Actions workflow (`.github/workflows/sync-version.yml`) fires on any
 `VERSION` change pushed to `main`: it runs `scripts/sync-version.sh` to propagate the version into
-the three product `plugin.json` files, the `.claude-plugin/marketplace.json` plugin entry, and every
-skill's `metadata.version`, then commits the result back to `main`. The follow-up commit runs the
+the three product `plugin.json` files and the `.claude-plugin/marketplace.json` plugin entry, then
+commits the result back to `main`. The follow-up commit runs the
 structural tests (which enforce that everything matches `VERSION`); the bare `VERSION` commit itself is
 skipped via `paths-ignore`, so you never see a red check mid-bump. (The Codex and Cursor marketplace
 files carry no version field — version lives in their `plugin.json`.)
