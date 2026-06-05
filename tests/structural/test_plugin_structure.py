@@ -193,3 +193,31 @@ def test_version_file_is_source_of_truth():
     assert entry["version"] == version, (
         f"marketplace.json version {entry['version']} != VERSION {version}"
     )
+
+
+# --- The zymtrace-perf-engineer subagent across platforms -----------------------
+#
+# Claude Code auto-discovers agents/. Cursor loads the same markdown agent via the
+# manifest's `agents` pointer. Codex reads subagents from ~/.codex/agents/ (not the
+# plugin), so we ship a TOML the user copies there.
+
+
+def test_cursor_declares_agents_pointer():
+    """Cursor manifest declares `agents: ./agents/`, resolving to the markdown agent dir."""
+    data = json.loads(PRODUCT_PLUGIN_JSONS["cursor"].read_text())
+    assert data.get("agents") == "./agents/", "cursor plugin.json should declare \"agents\": \"./agents/\""
+    agents_dir = (PRODUCT_PLUGIN_JSONS["cursor"].parent.parent / "agents").resolve()
+    assert agents_dir.is_dir() and any(agents_dir.glob("*.md")), "agents/ has no markdown agent"
+
+
+def test_codex_agent_toml_present():
+    """The Codex subagent TOML exists and declares the required fields.
+
+    (Validated by text, not parsed, to keep the suite dependency-light — no tomllib.)
+    """
+    path = REPO_ROOT / "zymtrace" / ".codex-plugin" / "agents" / "zymtrace-perf-engineer.toml"
+    assert path.exists(), f"Codex agent TOML not found at {path}"
+    text = path.read_text()
+    assert 'name = "zymtrace-perf-engineer"' in text, "Codex agent TOML missing/!= expected name"
+    for field in ("description =", "developer_instructions ="):
+        assert field in text, f"Codex agent TOML missing required field '{field}'"

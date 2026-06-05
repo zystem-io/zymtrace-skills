@@ -36,12 +36,13 @@ whole methodology end to end and only come back with the finished report (or whe
 ## Pre-flight: know the instance
 
 Before anything else, confirm you know **which zymtrace instance to analyze** — you need its
-zymtrace URL in context. It's already known if the zymtrace MCP is connected
-(`claude mcp list | grep -i zymtrace`; `claude mcp get zymtrace` shows the URL) or the user gave a
-zymtrace URL earlier. If **neither** — no connected MCP and no URL in context — this is one of the
-few cases where you stop and ask: request the user's zymtrace URL (e.g.
-`https://zymtrace.your-company.com`) before proceeding. Never guess or assume `localhost`. Once you
-have a URL but no connection, route to **configure-zymtrace-mcp** to connect, then continue.
+zymtrace URL in context. It's already known if a zymtrace MCP server is connected in your client
+(in Claude Code, `claude mcp list | grep -i zymtrace` and `claude mcp get zymtrace`; in Codex or
+Cursor, the equivalent MCP listing) or the user gave a zymtrace URL earlier. If **neither** — no
+connected MCP and no URL in context — this is one of the few cases where you stop and ask: request
+the user's zymtrace URL (e.g. `https://zymtrace.your-company.com`) before proceeding. Never guess or
+assume `localhost`. Once you have a URL but no connection, route to **configure-zymtrace-mcp** to
+connect, then continue.
 
 ## Investigation methodology
 
@@ -86,11 +87,11 @@ Profile and flamegraph data comes from the **MCP only**. Two hard prohibitions:
 
 If the MCP is unavailable:
 
-- **Never configured** (no zymtrace entry in `claude mcp list`) → stop and tell the user to run
+- **Never configured** (no zymtrace entry in your client's MCP list) → stop and tell the user to run
   **configure-zymtrace-mcp** first; first-time setup needs gateway discovery + token generation
   you can't do unattended.
-- **Configured but dropped/erroring** → reconnect (re-add with the URL/token from
-  `claude mcp get zymtrace`, per **configure-zymtrace-mcp**) and retry the failed call.
+- **Configured but dropped/erroring** → reconnect (re-add with the URL/token your client's MCP
+  config already holds, per **configure-zymtrace-mcp**) and retry the failed call.
 - **Only if reconnect fails** → fall back to the gateway REST API. Strip the trailing `/mcp` from
   the configured URL to get the base, fetch + parse `<gateway-url>/api-docs/openapi.json`, find
   the flamegraph endpoint (read its params from the spec — don't guess), and call it; for a GPU
