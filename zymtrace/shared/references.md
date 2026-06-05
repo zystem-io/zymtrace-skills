@@ -36,6 +36,11 @@ When a skill needs source-of-truth content (docs, chart values, compose files), 
 | Object storage | https://docs.zymtrace.com/databases/object-storage |
 | Authentication | https://docs.zymtrace.com/authentication |
 
+### Profiler & profiling features (`docs.zymtrace.com`)
+| Topic | URL |
+|-------|-----|
+| JVM memory allocation profiling (enable + config) | https://docs.zymtrace.com/allocation-profiling |
+
 ### Public images & artifacts
 - Backend services: `ghcr.io/zystem-io/zymtrace-pub-backend:<VERSION>` (also `docker.io/zystemio/zymtrace-pub-backend`)
 - UI: `ghcr.io/zystem-io/zymtrace-pub-ui:<VERSION>`
