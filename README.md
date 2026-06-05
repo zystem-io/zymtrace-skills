@@ -37,8 +37,6 @@ Once installed, describe what you want in plain English and your coding agent ha
 
 ### Agent
 
-> Bundled for **Claude Code** and **Cursor** (both load the markdown agent). For **OpenAI Codex**, copy the provided TOML to `~/.codex/agents/` — see [Install](#install).
-
 | Agent | What it does |
 |-------|-------------|
 | [`zymtrace-perf-engineer`](zymtrace/agents/zymtrace-perf-engineer.md) | Autonomous, hands-off performance investigation. Identifies the entity (script for Python, container, host, or k8s pod/deployment), pulls its metrics, then the CPU flamegraph — and the GPU flamegraph when it's a GPU workload — and returns a finished recap without stopping to confirm each step. Runs several in parallel. Invoke it by name (e.g. "use the zymtrace-perf-engineer to analyze my vLLM GPU workload"). |
@@ -75,13 +73,6 @@ codex plugin marketplace add zystem-io/zymtrace-skills
 
 Then run `/plugins` in Codex and install **zymtrace** from the marketplace.
 
-The `zymtrace-perf-engineer` **subagent** isn't loaded from the plugin (Codex reads subagents from `~/.codex/agents/`). To enable it, copy the bundled TOML once:
-
-```bash
-mkdir -p ~/.codex/agents
-cp zymtrace/.codex-plugin/agents/zymtrace-perf-engineer.toml ~/.codex/agents/
-```
-
 ### Cursor
 
 1. Open **Dashboard → Settings → Plugins**.
@@ -105,7 +96,7 @@ Each skill walks you through the decisions, runs the right commands, and verifie
 
 ### The agent (hands-off mode)
 
-For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent — name it in your request (Claude Code & Cursor; Codex once you've copied the TOML):
+For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent — name it in your request:
 
 ```
 "use the zymtrace-perf-engineer to analyze my vLLM GPU workload over the last hour"
