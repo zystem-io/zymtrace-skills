@@ -3,12 +3,6 @@ name: troubleshoot-zymtrace-profiler
 description: |
   Use when the zymtrace profiler agent is misbehaving — pods crash-looping, image pull errors, OOMKilled, CPU profiles working but no GPU profiles, NVML library not found, PC sampling not producing SASS-level data, or license errors on the profiler side. Walks symptom → diagnosis → fix. Focused on the agent itself; for "no data anywhere" use troubleshoot-zymtrace-backend.
   Trigger phrases: "profiler not working", "profiler pods crashing", "profiler CrashLoopBackOff", "profiler ImagePullBackOff", "agent OOMKilled", "no GPU profiles", "CPU profiles work but GPU doesn't", "NVML library not found", "PC sampling not working", "profiler license rejected", "agent restart cycle", "zymtrace agent unhealthy", "fix the profiler".
-metadata:
-  version: "26.5.0"
-  author: zymtrace
-  repository: https://github.com/zystem-io/zymtrace-skills
-  tags: zymtrace,profiling,kubernetes,helm,troubleshoot,profiler,gpu,cuda,nvidia,daemonset
-  tools: helm,kubectl,curl
 ---
 
 # Troubleshoot zymtrace Profiler

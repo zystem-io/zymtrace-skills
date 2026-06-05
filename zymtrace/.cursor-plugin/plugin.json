@@ -28,5 +28,6 @@
     "flamegraph",
     "observability"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "agents": "./agents/"
 }

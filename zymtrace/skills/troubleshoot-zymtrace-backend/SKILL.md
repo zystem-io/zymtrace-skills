@@ -3,12 +3,6 @@ name: troubleshoot-zymtrace-backend
 description: |
   Use when a deployed zymtrace backend isn't working as expected — no data appearing in the UI, profiles not arriving, ingest errors, ClickHouse storage full, license / auth failures, slow queries. Walks symptom → diagnosis → fix. Routes between backend (ingest, ClickHouse) and profiler (DaemonSet, CUDA injection) checks.
   Trigger phrases: "zymtrace not working", "no data in zymtrace UI", "zymtrace UI is empty", "no profiles appearing", "profiles not showing up", "ingest is failing", "clickhouse disk full", "license error in zymtrace", "license expired", "zymtrace queries are slow", "zymtrace broken after upgrade", "fix zymtrace", "diagnose zymtrace".
-metadata:
-  version: "26.5.0"
-  author: zymtrace
-  repository: https://github.com/zystem-io/zymtrace-skills
-  tags: zymtrace,profiling,kubernetes,helm,troubleshoot,diagnose,backend,profiler
-  tools: helm,kubectl,curl
 ---
 
 # Troubleshoot zymtrace Backend

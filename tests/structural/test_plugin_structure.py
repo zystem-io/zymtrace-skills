@@ -11,7 +11,6 @@ from tests.conftest import (
     REPO_ROOT,
     SKILLS_DIR,
     VERSION_FILE,
-    parse_frontmatter,
 )
 from tests.constants import REQUIRED_SKILLS
 
@@ -175,10 +174,11 @@ def test_cursor_marketplace_source_shape():
 
 
 def test_version_file_is_source_of_truth():
-    """The repo-root VERSION file is the single source of truth; everything matches it.
+    """The repo-root VERSION file is the single source of truth; manifests match it.
 
     Bump with `scripts/sync-version.sh` (see CLAUDE.md). This catches a manual edit that
-    drifted from VERSION, or a file the sync script missed.
+    drifted from VERSION, or a file the sync script missed. (Skills carry no version —
+    the plugin is the versioned unit.)
     """
     version = VERSION_FILE.read_text().strip()
     assert re.match(r"^\d+\.\d+\.\d+$", version), f"VERSION is not semver: {version!r}"
@@ -194,7 +194,16 @@ def test_version_file_is_source_of_truth():
         f"marketplace.json version {entry['version']} != VERSION {version}"
     )
 
-    for skill in REQUIRED_SKILLS:
-        fm = parse_frontmatter(SKILLS_DIR / skill / "SKILL.md")
-        v = str(fm["metadata"]["version"])
-        assert v == version, f"{skill} metadata.version {v} != VERSION {version}"
+
+# --- The zymtrace-perf-engineer subagent ----------------------------------------
+#
+# Claude Code auto-discovers agents/. Cursor loads the same markdown agent via the
+# manifest's `agents` pointer.
+
+
+def test_cursor_declares_agents_pointer():
+    """Cursor manifest declares `agents: ./agents/`, resolving to the markdown agent dir."""
+    data = json.loads(PRODUCT_PLUGIN_JSONS["cursor"].read_text())
+    assert data.get("agents") == "./agents/", "cursor plugin.json should declare \"agents\": \"./agents/\""
+    agents_dir = (PRODUCT_PLUGIN_JSONS["cursor"].parent.parent / "agents").resolve()
+    assert agents_dir.is_dir() and any(agents_dir.glob("*.md")), "agents/ has no markdown agent"

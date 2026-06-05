@@ -3,12 +3,6 @@ name: install-zymtrace-backend
 description: |
   Use when installing the zymtrace backend (the AI optimization platform that ingests CPU/GPU profiling data). Covers Kubernetes (Helm) and single-node Docker Compose. Handles license setup, choosing in-cluster vs external ClickHouse/Postgres/object storage, ingress with gRPC and TLS, and air-gapped installs via a custom image registry.
   Trigger phrases: "install zymtrace", "install zymtrace backend", "deploy zymtrace", "set up zymtrace on kubernetes", "set up zymtrace on EKS / GKE / AKS / on-prem", "helm install zymtrace", "docker compose zymtrace", "stand up the zymtrace platform", "first zymtrace install", "deploy the backend services".
-metadata:
-  version: "26.5.0"
-  author: zymtrace
-  repository: https://github.com/zystem-io/zymtrace-skills
-  tags: zymtrace,profiling,kubernetes,helm,docker-compose,install,backend
-  tools: helm,kubectl,curl,docker
 ---
 
 # Install zymtrace Backend
