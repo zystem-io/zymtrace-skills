@@ -38,7 +38,7 @@ Allocation is rarely free: high allocation rate drives **GC frequency and pause 
 
 The MCP pulls the data; you do the analysis. Establish a data path first (pre-flight, in the shared doc), and **confirm allocation profiling is enabled** (above) — if the Java service has no allocation profile yet, enable it and wait for data before continuing.
 
-1. **Rank first if the request is rank-shaped** ("what's allocating the most", "which code creates the most garbage") — use **topentities** / **topfunctions** on the **allocation** dimension. Rank by **bytes allocated** over the window (show the figure per entry); include host and container names where the data has them. Mark unmodifiable runtime/library allocations (JIT, classloading, framework internals you can't change) non-actionable and drill into the highest user-owned site. See scope-to-own-code/ROI in the shared doc.
+1. **Rank first if the request is rank-shaped** ("what's allocating the most", "which code creates the most garbage") — use **topentities** / **topfunctions** on the **allocation** dimension (concise rankings), then drill into the top site with `hot_traces`. Rank by **bytes allocated** over the window (show the figure per entry); include host and container names where the data has them. Mark unmodifiable runtime/library allocations (JIT, classloading, framework internals you can't change) non-actionable and drill into the highest user-owned site. See scope-to-own-code/ROI in the shared doc.
 
 2. **Pull allocation-related metrics first, for context.** Allocation rate (bytes/sec), GC time and frequency, heap used / churn — to establish whether GC pressure is actually a problem or allocation is cheap here. Carry these into the recap; they tell you if the fix is worth it.
 

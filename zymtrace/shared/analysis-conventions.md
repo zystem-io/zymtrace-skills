@@ -15,6 +15,8 @@ All metrics and flamegraphs come from the user's live zymtrace instance:
 
 **Pulling traces — `hot_traces` first.** For the call-tree / flamegraph step on **all three profile types — CPU, GPU, and allocation (ALLOC)** — prefer the **`hot_traces`** MCP tool when it's available; it's present on zymtrace **26.5.1 and above**. Fall back to the **`flamegraph`** MCP tool on older instances or whenever `hot_traces` isn't exposed. Try `hot_traces` first and drop to `flamegraph` if it's absent or errors; don't ask the user which version they run — detect it from the tool list.
 
+This tool preference is for the **call-tree / flamegraph** step only. For **ranking** ("which entity/function is hottest"), still use the concise **`topentities`** / **`topfunctions`** tools — `hot_traces` returns full trace data, more than you need to rank. Rank with `top*`, then pull the hot entry's call tree with `hot_traces`.
+
 Two hard prohibitions:
 
 - **Never** substitute local profile files (`.pftrace`, `profile_*.json`) — they aren't tied to the user's instance/filter and mislead.
@@ -46,7 +48,9 @@ Then **let the metrics decide.** You pull the entity's metrics first regardless 
 ## Two request shapes: rank-first vs. drill-down
 
 - **Drill-down** — the user already named a workload ("analyze my training job", "my API service"). Go straight to your skill's protocol.
-- **Rank-first** — the user asks *which* thing is hottest or where the best return is ("which process uses the most CPU", "what's eating my CPU", "biggest ROI", "what should I optimize first"). Start by ranking with the MCP's **topentities** (hottest container/pod/host/process) or **topfunctions** (hottest functions), then drill into the top entry. The recap leads with the ranking, then the analysis of the top user-owned entry.
+- **Rank-first** — the user asks *which* thing is hottest or where the best return is ("which process uses the most CPU", "what's eating my CPU", "biggest ROI", "what should I optimize first"). Start by ranking with the MCP's **topentities** (hottest container/pod/host/process) or **topfunctions** (hottest functions), then drill into the top entry with `hot_traces`. The recap leads with the ranking, then the analysis of the top user-owned entry.
+
+**Always exclude the zymtrace profiler itself** (the zymtrace agent — e.g. `zymtrace-profiler` / the profiler DaemonSet) from rankings entirely. It's the tool doing the measuring; it surfacing near the top almost always just means the cluster is otherwise idle, not that it needs fixing. **Drop it from the table** rather than listing it (note "(zymtrace profiler excluded)" if it would have ranked) — this is a hard skip, distinct from the ❌ reference rows below.
 
 **Scope to code the user controls.** When the user says "focus on apps that are mine" — or whenever
 the top consumer is something they can't change (kube-proxy, kubelet, systemd, the kernel, other
@@ -62,8 +66,12 @@ user asked for solutions. Don't hedge with "let me know if you want suggestions"
 constraints first". Lead with the most plausible specific fix from the data; the user can push back
 if their constraints don't fit. Analysis without recommendations is incomplete output.
 
+**Display the recap before attempting the fix.** Output the complete recap (the template above) as a
+finished deliverable *first* — the user sees the full diagnosis before you touch any file. Don't
+interleave edits into the recap or start editing mid-analysis.
+
 **Then apply it — don't stop at the recap.** Your job is to fix the code, not only diagnose it.
-After the recap, **act on the top 🔴 issue's `Fix:`**:
+After the recap is shown, **act on the top 🔴 issue's `Fix:`**:
 
 1. **Find the source locally.** The flamegraph names the hot frame — `<module>.<function>` or `<file>:<line>`. Search the working directory.
    - **Found** → make the edit: the code change for a code-level fix, or the launch config / Helm values / manifest for a flag or env-var fix. Show the diff.

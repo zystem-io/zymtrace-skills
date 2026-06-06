@@ -82,8 +82,11 @@ connect, then continue.
      signals (model, service, file, pod, vLLM, SGLang). If two are equally likely, pick the most
      specific and state it in the recap.
    - **Rank-first** ("which process uses the most CPU", "biggest ROI", "what should I optimize
-     first") → start with the MCP's **topentities** / **topfunctions** to rank consumers, then
-     pick the top entry to drill into. When the user says "focus on my own apps" (or the top
+     first") → rank consumers with the MCP's **topentities** / **topfunctions** (concise rankings),
+     then pick the top entry and drill in with `hot_traces`. **Always exclude the zymtrace profiler
+     itself** (`zymtrace-profiler`) from the ranking — it being hot usually just means the cluster
+     is idle, not that it needs fixing. When the user says
+     "focus on my own apps" (or the top
      consumer is unmodifiable — kube-proxy, kubelet, systemd, the kernel), keep those in the
      ranking for context but mark them non-actionable, and drill into the highest user-owned
      entry. ROI = time spent × how fixable it is; lead with the entry where a realistic change
