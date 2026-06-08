@@ -1,10 +1,22 @@
 # Profile Analysis Conventions
 
-Shared discipline for the two analysis skills — [`optimize-cpu-workloads`](../skills/optimize-cpu-workloads/SKILL.md)
-and [`optimize-gpu-workloads`](../skills/optimize-gpu-workloads/SKILL.md) — and the
+Shared discipline for the three optimize skills — [`optimize-cpu-workloads`](../skills/optimize-cpu-workloads/SKILL.md),
+[`optimize-gpu-workloads`](../skills/optimize-gpu-workloads/SKILL.md), and
+[`optimize-memory-allocation`](../skills/optimize-memory-allocation/SKILL.md) — and the
 **zymtrace-perf-engineer** agent. The zymtrace MCP fetches the data (rankings, flamegraphs,
 metrics); **you** do the analysis: name the hot stacks, identify the pattern, recommend the fix,
 **then apply it**. Each skill adds its view-specific protocol on top of the rules below.
+
+## Open with your plan (💚)
+
+Before pulling data, **tell the user what you're about to do** — a short plan, one **💚 green-heart bullet** per step, matched to the request. For example:
+
+> 💚 Pull `<entity>` metrics and rank the top consumers
+> 💚 Pull the hot call tree (and cross-check the opposite view where it applies)
+> 💚 Summarize the findings and recommend fixes
+> 💚 Locate the hot frame in your source and apply the top fix
+
+Then proceed. Keep it to 3–5 bullets — the shape of the run, not a sub-task list. (The autonomous **zymtrace-perf-engineer** agent skips this preamble — it returns the finished recap directly, per its own brief.)
 
 ## Data-source policy — same instance, two paths
 
@@ -66,9 +78,11 @@ user asked for solutions. Don't hedge with "let me know if you want suggestions"
 constraints first". Lead with the most plausible specific fix from the data; the user can push back
 if their constraints don't fit. Analysis without recommendations is incomplete output.
 
-**Display the recap before attempting the fix.** Output the complete recap (the template above) as a
-finished deliverable *first* — the user sees the full diagnosis before you touch any file. Don't
-interleave edits into the recap or start editing mid-analysis.
+**Write the summary of findings and recommendations before finding the source to modify.** Output the
+complete recap (the template above) as a finished deliverable *first* — findings and `Fix:`
+recommendations in full — before you touch any file *or even search the working directory for the
+source*. The user sees the whole diagnosis before any code work begins; don't interleave edits into
+the recap or start hunting for files mid-analysis.
 
 **Then apply it — don't stop at the recap.** Your job is to fix the code, not only diagnose it.
 After the recap is shown, **act on the top 🔴 issue's `Fix:`**:
@@ -139,6 +153,8 @@ defines how to render it. Everything else below is common.
 
 ## Done — common checklist
 
+- [ ] Opened with a short 💚 plan (interactive runs) before pulling data.
+- [ ] Recap (findings + recommendations) written and shown **before** searching for or editing source.
 - [ ] Workload metrics pulled first and carried into the recap as context.
 - [ ] Recap follows the **Output template**: title, observed call tree, Key Findings, 🔴 block (max 3, each with observation + `**Fix:**`), 🟡 block (max 2 one-liners), Expected Impact.
 - [ ] **Every** 🔴 has a concrete `**Fix:**` grounded in the flamegraph data — never punted ("ask me if you want suggestions"), never invented. Same for each 🟡.
