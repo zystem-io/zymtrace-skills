@@ -1,7 +1,7 @@
 {
   "name": "zymtrace",
   "description": "Detect and optimize CPU and GPU workload bottlenecks with zymtrace continuous profiling — analyze flamegraphs through the MCP, plus install, upgrade, expose, and troubleshoot the platform.",
-  "version": "26.5.0",
+  "version": "26.6.0",
   "author": {
     "name": "Zymtrace",
     "email": "support@zymtrace.com",
