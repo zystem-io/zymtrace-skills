@@ -107,6 +107,16 @@ For an investigation you want to run *unattended*, hand the whole thing to the *
 
 It identifies the entity, pulls metrics, then the flamegraph(s), and returns one finished recap — without stopping to confirm each step. Run several at once to triage multiple workloads in parallel. Run **`/agents`** to see it in the live list. Unlike the skills, it runs autonomously, so the read-only profile pulls don't prompt for each step.
 
+### Set your CPU cost rate (optional)
+
+`optimize-cpu-workloads` turns CPU cores into money — it annualizes each workload's cores and shows an estimated yearly cost. By default it assumes **$0.04 / vCPU-hour (≈ $350 / core-year)** and labels it as an assumption. To use your real number (your blended instance rate, a Savings-Plan effective rate, or a fully-loaded chargeback figure), add one line to your agent-instructions file — `AGENTS.md` (Claude Code, Codex, Cursor) or `CLAUDE.md` (Claude Code):
+
+```markdown
+zymtrace-vcpu-rate: $0.032/vCPU-hour
+```
+
+The skill checks for that line before falling back to the default, so every cost estimate uses your rate and it stops asking. (You can also just tell it your rate mid-session and approve saving it — it writes the same line for you.)
+
 ### See what's installed
 
 Run **`/skills`** and **`/agents`** in any session to see the components with on/off toggles. For the full inventory and per-component token cost, run:
