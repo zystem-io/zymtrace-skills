@@ -10,5 +10,7 @@ REQUIRED_SKILLS = [
     "troubleshoot-zymtrace-backend",
     "troubleshoot-zymtrace-profiler",
     "configure-zymtrace-mcp",
-    "analyze-zymtrace-workload",
+    "optimize-cpu-workloads",
+    "optimize-gpu-workloads",
+    "optimize-memory-allocation",
 ]

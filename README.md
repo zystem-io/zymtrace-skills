@@ -33,7 +33,9 @@ Once installed, describe what you want in plain English and your coding agent ha
 | [`troubleshoot-zymtrace-backend`](zymtrace/skills/troubleshoot-zymtrace-backend/) | Diagnose "no data appearing", license errors, ingest crashes, slow queries, storage issues. |
 | [`troubleshoot-zymtrace-profiler`](zymtrace/skills/troubleshoot-zymtrace-profiler/) | Diagnose agent-side failures — CrashLoopBackOff, OOMKilled, NVML missing, PC sampling, license rejected. |
 | [`configure-zymtrace-mcp`](zymtrace/skills/configure-zymtrace-mcp/) | Connect Claude Code (or any MCP client) to the zymtrace MCP server so you can analyze profiles with natural-language queries. |
-| [`analyze-zymtrace-workload`](zymtrace/skills/analyze-zymtrace-workload/) | Analyze CPU/GPU performance through the MCP — rank the top consumers (which process/function/pod is hottest, biggest ROI), or drill into a named workload: pull metrics, cross-check GPU + matching CPU flamegraphs, scope to the user's own code, then apply the fix in the local source (asking for the path if it isn't local) and close with a follow-up. |
+| [`optimize-cpu-workloads`](zymtrace/skills/optimize-cpu-workloads/) | Analyze CPU performance through the MCP (CPU-only deployments) — rank the top consumers (which process/function/pod is hottest, biggest ROI) or drill into a named workload: pull CPU metrics + flamegraph, name the pattern, scope to the user's own code, then apply the fix in the local source (asking for the path if it isn't local) and close with a follow-up. No GPU or inference-server framing. |
+| [`optimize-gpu-workloads`](zymtrace/skills/optimize-gpu-workloads/) | Analyze GPU performance through the MCP — read a GPU flamegraph, find the hot kernel, diagnose low GPU saturation, or investigate vLLM/SGLang/Triton or training. Always cross-checks the matching CPU flamegraph (the bottleneck often hides host-side), then applies the fix in the local source and closes with a follow-up. |
+| [`optimize-memory-allocation`](zymtrace/skills/optimize-memory-allocation/) | Analyze **JVM** memory-allocation profiles through the MCP — what's allocating the most (bytes/objects), why GC is busy, where churn burns CPU. Java-only (boxing, String churn, collection resize, buffer churn). Names the allocation site, applies the fix, frames impact as GC pause + CPU reclaimed. |
 
 ### Agent
 
@@ -115,7 +117,8 @@ claude plugin details zymtrace
 
 ```text
 Component inventory
-  Skills (8)  analyze-zymtrace-workload, configure-zymtrace-mcp, expose-zymtrace-backend,
+  Skills (10) optimize-cpu-workloads, optimize-gpu-workloads,
+              optimize-memory-allocation, configure-zymtrace-mcp, expose-zymtrace-backend,
               install-zymtrace-backend, install-zymtrace-profiler, troubleshoot-zymtrace-backend,
               troubleshoot-zymtrace-profiler, upgrade-zymtrace-backend
   Agents (1)  zymtrace-perf-engineer

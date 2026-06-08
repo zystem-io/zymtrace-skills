@@ -1,13 +1,13 @@
 ---
 name: configure-zymtrace-mcp
 description: |
-  Use when connecting a coding agent — Claude Code, OpenAI Codex, or Cursor — to the zymtrace MCP server so the user can analyze CPU and GPU flamegraphs through natural-language queries. Walks through finding the gateway URL, generating an auth token (if service-token auth is on), adding the server with the right command for the user's client, and verifying the connection. This skill is plumbing only — the analytical workflow lives in `analyze-zymtrace-workload`.
+  Use when connecting a coding agent — Claude Code, OpenAI Codex, or Cursor — to the zymtrace MCP server so the user can analyze CPU and GPU flamegraphs through natural-language queries. Walks through finding the gateway URL, generating an auth token (if service-token auth is on), adding the server with the right command for the user's client, and verifying the connection. This skill is plumbing only — the analytical workflow lives in `optimize-cpu-workloads` and `optimize-gpu-workloads`.
   Trigger phrases: "connect zymtrace MCP", "set up zymtrace MCP", "configure zymtrace MCP", "add zymtrace to /mcp", "connect Claude/Codex/Cursor to zymtrace", "/mcp doesn't show zymtrace", "zymtrace MCP token", "Cursor zymtrace integration", "set up the zymtrace AI assistant".
 ---
 
 # Configure zymtrace MCP
 
-Helps the user connect their coding agent — **Claude Code, OpenAI Codex, or Cursor** — to their zymtrace backend's MCP server. Once connected, the user can analyze their CPU and GPU flamegraphs with natural-language queries — see [`analyze-zymtrace-workload`](../analyze-zymtrace-workload/SKILL.md) for the analytical workflow.
+Helps the user connect their coding agent — **Claude Code, OpenAI Codex, or Cursor** — to their zymtrace backend's MCP server. Once connected, the user can analyze their CPU and GPU flamegraphs with natural-language queries — see [`optimize-cpu-workloads`](../optimize-cpu-workloads/SKILL.md) (CPU-only) or [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md) (GPU) for the analytical workflow.
 
 > The MCP server is part of the zymtrace backend itself — it lives at `<gateway-host>/mcp`. If the backend isn't installed and reachable yet, route to `install-zymtrace-backend` and `expose-zymtrace-backend` first.
 
@@ -144,7 +144,7 @@ If it returns data, the connection works. `unauthorized` → token wrong, regene
 
 ### Step 6: Hand off
 
-Direct the user to [`analyze-zymtrace-workload`](../analyze-zymtrace-workload/SKILL.md) for the analytical workflow — workload classification (inference vs training), GPU↔CPU cross-view, pattern catalogues. That's where the connected MCP actually gets used.
+Direct the user to the analytical workflow — [`optimize-cpu-workloads`](../optimize-cpu-workloads/SKILL.md) for CPU-only deployments, [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md) for GPU workloads (it adds the GPU↔CPU cross-view and inference-server pattern catalogues), or [`optimize-memory-allocation`](../optimize-memory-allocation/SKILL.md) for JVM memory-allocation / GC analysis (Java only). That's where the connected MCP actually gets used.
 
 ### Optional: pair with the GitHub MCP for code-level fixes
 
@@ -185,7 +185,7 @@ This is fine for dev / one-off investigations. For team-wide use, run [`expose-z
 - [ ] The client's MCP list (Step 5) shows `zymtrace` connected.
 - [ ] A test query (e.g. "list top 5 hottest CPU functions in the last hour") returns data.
 
-If both check, hand off to [`analyze-zymtrace-workload`](../analyze-zymtrace-workload/SKILL.md).
+If both check, hand off to [`optimize-cpu-workloads`](../optimize-cpu-workloads/SKILL.md) (CPU-only), [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md) (GPU), or [`optimize-memory-allocation`](../optimize-memory-allocation/SKILL.md) (JVM memory/GC).
 
 ## Common pitfalls
 
