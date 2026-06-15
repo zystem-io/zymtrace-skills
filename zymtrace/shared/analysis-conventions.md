@@ -7,6 +7,15 @@ Shared discipline for the three optimize skills — [`optimize-cpu-workloads`](.
 metrics); **you** do the analysis: name the hot stacks, identify the pattern, recommend the fix,
 **then apply it**. Each skill adds its view-specific protocol on top of the rules below.
 
+## Hand off to the subagent for unattended / parallel runs
+
+If you're running **inline as a skill** (the user is in the loop) and the request is
+delegation-shaped — run it **unattended** ("report back when done", "just fix it"), or **several
+workloads triaged at once / in parallel** — hand off to the **zymtrace-perf-engineer** subagent
+instead of doing it inline; that's what it's for. For a normal single-workload analysis with the
+user present, stay inline. (If you *are* the zymtrace-perf-engineer agent, this is already you —
+carry on.)
+
 ## Open with your plan (💚)
 
 Before pulling data, **tell the user what you're about to do** — a short plan, one **💚 green-heart bullet** per step, matched to the request. For example:

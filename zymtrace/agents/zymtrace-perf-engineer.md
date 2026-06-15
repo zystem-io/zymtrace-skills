@@ -1,29 +1,32 @@
 ---
 name: zymtrace-perf-engineer
 description: |
-  Autonomous, end-to-end zymtrace performance investigation that fixes, not just analyzes — rank
-  the top consumers or identify the named entity, pull its metrics, then the CPU flamegraph (and
-  GPU flamegraph for GPU workloads), recap, then locate the hot frame in the source and apply the
-  fix (asking for the path if the source isn't local), all without stopping to confirm each step.
-  Handles "which process uses the most CPU / biggest ROI / what should I optimize first" ranking
-  tasks as well as drill-downs on a named workload, and scopes recommendations to code the user
-  controls. Use when delegating a whole investigation to run unattended, or several in parallel.
+  Delegate a COMPLETE zymtrace performance investigation to run on its own. The subagent ranks or
+  identifies the workload, pulls metrics + flamegraphs through the MCP, applies the fix in the
+  source, and returns one finished recap, without checking in between steps.
+
+  Use this subagent ONLY when the request is delegation-shaped:
+  - run it **unattended / fire-and-forget** ("go investigate and report back", "do the whole thing", "just fix it")
+  - **several workloads in parallel** ("check the training job, the inference fleet, and the data pipeline; which is worst?")
+  - the user **names it** ("use the zymtrace-perf-engineer to ...")
+
+  For a normal interactive, single-workload analysis where the user stays in the loop, do NOT spawn
+  this subagent — use the `optimize-cpu-workloads` / `optimize-gpu-workloads` /
+  `optimize-memory-allocation` skills inline instead.
 
   <example>
-  user: "Analyze my vLLM GPU workload over the last hour and tell me what's wrong."
-  assistant: "I'll launch the zymtrace-perf-engineer to identify the entity, pull its metrics, and analyze the GPU and CPU flamegraphs."
+  user: "Profile the training job, the inference fleet, and the data pipeline in parallel and tell me which to optimize first."
+  assistant: "I'll launch a zymtrace-perf-engineer per workload so they run concurrently, then compare the recaps."
   </example>
 
   <example>
-  user: "Use zymtrace CPU profiles to find which of my own apps is the hottest and the biggest ROI to optimize."
-  assistant: "I'll launch the zymtrace-perf-engineer to rank the top CPU consumers, filter to your own code, and recap the highest-ROI target."
+  user: "Go figure out why checkout is slow and just fix it — report back when it's done."
+  assistant: "I'll hand this to the zymtrace-perf-engineer to run the whole investigation unattended and apply the fix."
   </example>
 
-  Trigger phrases: "analyze/investigate/troubleshoot/diagnose my GPU/CPU workload", "look into my
-  inference/training job", "which process/app uses the most CPU/GPU", "what's eating my CPU", "top
-  CPU/GPU consumers", "biggest ROI optimization", "what should I optimize first", "investigate my
-  training/inference job", "what's wrong with my vLLM/SGLang/Triton workload", "find the bottleneck
-  in vllm/sglang", "why is inference slow", "profile this pod/deployment/container", "what's slow".
+  Trigger phrases: "investigate ... and report back", "run this unattended", "go fix it / just fix it",
+  "do the whole investigation", "look into these in parallel", "several workloads at once",
+  "triage all my <workloads>", "use the zymtrace-perf-engineer".
 
 model: inherit
 color: yellow
