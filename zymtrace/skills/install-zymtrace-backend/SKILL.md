@@ -41,6 +41,7 @@ Trim the greeting if the user has already given you specifics (cluster, values f
 
 - Live chart `values.yaml` (every key is documented inline): <https://raw.githubusercontent.com/zystem-io/zymtrace-charts/main/charts/backend/values.yaml>
 - Docs: <https://docs.zymtrace.com/install/backend/helm-docker> (no public source repo — fetch URLs)
+- Latest release + what changed: <https://docs.zymtrace.com/changelog> (newest version at the top). Use this as the **fallback** to name the latest version when `helm search` can't (repo not added yet, stale cache, air-gapped).
 - Full URL map: [`shared/references.md`](../../shared/references.md)
 
 ## Pre-flight: verify the tools
@@ -192,6 +193,8 @@ helm repo add zymtrace https://helm.zystem.io
 helm repo update
 helm search repo zymtrace/backend --versions | head -5
 ```
+
+**Version to install.** `helm search` (above) is the source of truth for available chart versions — install the newest it lists unless the user pins one. **If it returns nothing** (repo just added and cache is stale, or air-gapped so the repo isn't reachable), fall back to the changelog at <https://docs.zymtrace.com/changelog> — the top entry is the latest release. Either way, tell the user which version you're about to install (and one line of what's new) before Step 4; they can pin an older one with `--version <X.Y.Z>`.
 
 ERROR: `not a valid chart repository` → network/proxy issue, or air-gapped. Switch to the air-gapped path.
 

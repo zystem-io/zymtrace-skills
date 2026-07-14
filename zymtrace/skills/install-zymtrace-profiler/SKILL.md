@@ -41,6 +41,7 @@ If the user has already specified Helm / GPU / target, skip the roadmap and dive
 - Profiler install docs: <https://docs.zymtrace.com/install/profiler/install-profiler>
 - GPU profiler quick-start: <https://docs.zymtrace.com/install/profiler/gpu-profiler-quick-start>
 - CLI args + env vars: <https://docs.zymtrace.com/profiler-configuration>
+- Latest release + what changed: <https://docs.zymtrace.com/changelog> (newest version at the top) — the **fallback** for the latest version when `helm search` can't reach the repo (just added / stale cache / air-gapped).
 
 ## Pre-flight: verify the tools
 
@@ -140,6 +141,8 @@ helm repo add zymtrace https://helm.zystem.io   # idempotent if already added
 helm repo update zymtrace
 helm search repo zymtrace/profiler --versions | head -5
 ```
+
+**Version to install.** `helm search` (above) is the source of truth for available chart versions — install the newest it lists unless the user pins one. **If it returns nothing** (repo just added and the cache is stale, or air-gapped), fall back to the changelog at <https://docs.zymtrace.com/changelog> — the top entry is the latest release. Keep the profiler on the same version as the backend. Tell the user which version you're installing before Step 3.
 
 ### Step 2: Generate the canonical values file
 

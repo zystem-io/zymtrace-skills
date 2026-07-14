@@ -26,6 +26,7 @@ When a skill needs source-of-truth content (docs, chart values, compose files), 
 | Storage overview | https://docs.zymtrace.com/install/backend/config-storage |
 | HPA | https://docs.zymtrace.com/install/backend/hpa |
 | Custom registry (air-gapped) | https://docs.zymtrace.com/install/custom-registry |
+| Changelog — latest release + what changed (fallback for the latest version when `helm search` / the repo is unavailable) | https://docs.zymtrace.com/changelog |
 
 ### Database & auth docs (referenced from install flows)
 | Topic | URL |

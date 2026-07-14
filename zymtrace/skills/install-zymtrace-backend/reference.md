@@ -103,6 +103,8 @@ Use case: laptop / PoC / single VM. No HA, no ingress story, no GPU profiling at
    ```
    Versioned download root: <https://dl.zystem.io/zymtrace/>
 
+   Resolve `<VERSION>` from the changelog (<https://docs.zymtrace.com/changelog>, newest at the top) — there's no Helm repo to `helm search` on this path. Tell the user which version they're pinning.
+
 2. Set the license (optional — free tier works without):
    ```bash
    echo 'ZYMTRACE_LICENSE_KEY="paste-key-here"' > .env

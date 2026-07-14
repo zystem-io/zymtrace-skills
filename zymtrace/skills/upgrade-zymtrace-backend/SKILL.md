@@ -24,6 +24,7 @@ Deep details (backup, rollback, schema migrations, the `migrate` job) live in `$
 - Live `values.yaml`: <https://raw.githubusercontent.com/zystem-io/zymtrace-charts/main/charts/backend/values.yaml>
 - Chart releases (versions & appVersions): `helm search repo zymtrace/backend --versions`
 - Docs: <https://docs.zymtrace.com/install/backend/helm-docker>
+- Latest release + what changed (resolve "latest", diff current→target; fallback for the latest version when `helm search` can't): <https://docs.zymtrace.com/changelog> (newest at the top)
 
 ## Pre-flight: verify the tools
 
@@ -128,6 +129,8 @@ helm search repo zymtrace/backend --versions | head -5
 ```
 
 `helm repo update` is **mandatory** before any upgrade — the local cache may be stale and `helm upgrade --version X.Y.Z` will fail if X.Y.Z isn't in the cache yet. After the update, verify the target version (and `appVersion`) appears in the listing.
+
+**Latest version + what changed.** `helm search` (above) is the source of truth for which chart versions are actually *published* — always verify the target appears there before upgrading. To resolve **"latest"** or see **what changed** between the current version (from Pre-resolve) and the target, read the changelog: <https://docs.zymtrace.com/changelog> (newest at the top). Surface to the user the latest available version, the target you'll move to, and a one-to-three-line summary of the changes (Major entries especially). **If `helm search` returns nothing** (repo just added / stale cache / air-gapped), the changelog is the fallback for naming the latest release — but you still can't `helm upgrade --version X.Y.Z` until the repo actually resolves that chart.
 
 ERROR: target version not listed → either the version hasn't been published, or `helm repo add` was never run. `helm repo list` to check, `helm repo add zymtrace https://helm.zystem.io` if needed.
 
