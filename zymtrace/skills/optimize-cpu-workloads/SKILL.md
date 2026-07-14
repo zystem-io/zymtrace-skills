@@ -17,7 +17,7 @@ Connection setup lives in [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/S
 
 ## Standard starter prompts (for users who don't know what to ask)
 
-> **"What's is consuming the most CPU coreover the last 1 hour?"** · **"Which of my apps should I optimize first?"**
+> **"What's consuming the most CPU over the last 1 hour?"** · **"Which of my apps should I optimize first?"**
 
 Most CPU requests are **rank-first** (see the shared doc): the user wants to know *which* thing is hottest or where the best return is. Start by ranking with the MCP's **topentities** (hottest container/pod/host/process) or **topfunctions** (hottest functions), then drill into the top user-owned code with `hot_traces`. The recap leads with the ranking, then the analysis of that entry. If the user already named a workload ("analyze my API service"), skip the ranking and drill straight in.
 
