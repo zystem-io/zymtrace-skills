@@ -47,7 +47,7 @@ If **yes** → use that file directly with `helm upgrade --install ... -f <their
 
 If **no** → reconstruct from the live release: `helm get values <REL> -n <NS> > values-current.yaml`. Note this captures only user-set values, not chart defaults (which is fine for `helm upgrade`).
 
-Full policy: [`shared/conventions.md` § Customer-provided values file](../../shared/conventions.md#customer-provided-values-file).
+Full policy: [`shared/conventions.md` § The single values file](../../shared/conventions.md#the-single-values-file).
 
 For Path A (image-only bump) this check can be skipped — no values file is required.
 

@@ -232,7 +232,7 @@ Full doc: <https://docs.zymtrace.com/install/backend/mtls>
 
 ## Exposure (Ingress / LoadBalancer / NodePort)
 
-Exposure decisions live in the [`expose-zymtrace-backend`](../../expose-zymtrace-backend/SKILL.md) skill — including the ALB HTTP2 quirk, ACM cert handling, NGINX cert-manager TLS, and NodePort. This skill no longer carries duplicate exposure templates.
+Exposure decisions live in the [`expose-zymtrace-backend`](../expose-zymtrace-backend/SKILL.md) skill — including the ALB HTTP2 quirk, ACM cert handling, NGINX cert-manager TLS, and NodePort. This skill no longer carries duplicate exposure templates.
 
 ---
 

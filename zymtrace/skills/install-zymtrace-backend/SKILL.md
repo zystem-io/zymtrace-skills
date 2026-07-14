@@ -62,7 +62,7 @@ If `helm` is missing → point user to <https://helm.sh/docs/intro/install/>. Do
 
 > Did Zymtrace send you a values file (often named `custom-values.yaml`, `backend-values.yaml`, or `<company>-values.yaml`)? It usually contains your license, DB modes, and other pre-agreed settings.
 
-If yes → read it, skip any decision-tree question whose answer is already set in the file, and go directly to Step 4 with `-f <their-file>`. Full policy: [`shared/conventions.md` § Customer-provided values file](../../shared/conventions.md#customer-provided-values-file).
+If yes → read it, skip any decision-tree question whose answer is already set in the file, and go directly to Step 4 with `-f <their-file>`. Full policy: [`shared/conventions.md` § The single values file](../../shared/conventions.md#the-single-values-file).
 
 If no → walk the decision tree below; at the end, write the result to `./custom-values.yaml` and tell them to commit it to source control.
 
@@ -326,7 +326,7 @@ If any box fails, hand off to the `troubleshoot-zymtrace-backend` skill, or use 
 ## Common pitfalls
 
 - **NGINX/Traefik missing `backend-protocol: "GRPC"`** → agents can't push profiles; UI may still work.
-- **ALB set to GRPC backend** → HTTP/1.1 clients get HTTP 464. Use HTTP + HTTP2. See [reference.md](reference.md#alb-http2-quirk).
+- **ALB set to GRPC backend** → HTTP/1.1 clients get HTTP 464. Use HTTP + HTTP2. See [`expose-zymtrace-backend` § ALB HTTP2 quirk](../expose-zymtrace-backend/reference.md#alb-http2-quirk).
 - **`proxy-body-size` unset / too small** → symbol uploads fail silently.
 - **NodePort + OIDC** → `redirectUri` must be set explicitly (chart can't auto-derive) and registered with the IdP.
 - **ClickHouse `use_existing.host` on native port `9000`** → ingest crashes. Use HTTP `8123`/`8443`.
