@@ -48,6 +48,7 @@ Notes:
 - For **CPU-only** profiling, drop both `-v /var/lib/zymtrace/profiler:/opt/zymtrace-cuda-profiler` and the `--enable-gpu-metrics --nvml-auto-scan` flags.
 - `--nvml-auto-scan` is fine for first install. Switch to `--nvml-path=/path/to/libnvidia-ml.so` once you know the path (saves startup scan).
 - For service-token auth (`auth.serviceToken.enabled: true` on the backend), add `--auth-token "$ZYMTRACE_AUTH_TOKEN"`.
+- Resolve the image tag `<VERSION>` from the changelog (<https://docs.zymtrace.com/changelog>, newest at the top) — there's no Helm repo to `helm search` on this path. Match the backend's version.
 
 ### Binary (bare-metal)
 
@@ -60,6 +61,8 @@ curl -LO https://dl.zystem.io/zymtrace/<VERSION>/amd64/zymtrace-profiler.tar.gz
 
 sudo tar -xzvf zymtrace-profiler.tar.gz -C / --no-same-owner
 ```
+
+Resolve `<VERSION>` from the changelog (<https://docs.zymtrace.com/changelog>, newest at the top) — no Helm repo to `helm search` here. Match the backend's version and tell the user which one you're pinning.
 
 #### Run option A — `nohup` background (quickest for ad-hoc testing)
 ```bash

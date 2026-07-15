@@ -97,6 +97,9 @@ The structural suite verifies:
 - Directory layout matches `REQUIRED_SKILLS` (no orphan or undeclared skills)
 - Path portability: no bare `./scripts/` invocations; every `${CLAUDE_PLUGIN_ROOT}`
   path resolves; referenced scripts are executable
+- Internal link integrity: every relative markdown link across the plugin docs
+  resolves to a file on disk, and every `#heading` fragment matches a real heading
+  (GitHub-style anchors); external and `${CLAUDE_PLUGIN_ROOT}` links are out of scope
 
 No API keys, cluster, or network access are needed.
 

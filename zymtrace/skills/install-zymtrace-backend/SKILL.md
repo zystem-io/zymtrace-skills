@@ -41,6 +41,7 @@ Trim the greeting if the user has already given you specifics (cluster, values f
 
 - Live chart `values.yaml` (every key is documented inline): <https://raw.githubusercontent.com/zystem-io/zymtrace-charts/main/charts/backend/values.yaml>
 - Docs: <https://docs.zymtrace.com/install/backend/helm-docker> (no public source repo — fetch URLs)
+- Latest release + what changed: <https://docs.zymtrace.com/changelog> (newest version at the top). Use this as the **fallback** to name the latest version when `helm search` can't (repo not added yet, stale cache, air-gapped).
 - Full URL map: [`shared/references.md`](../../shared/references.md)
 
 ## Pre-flight: verify the tools
@@ -61,7 +62,7 @@ If `helm` is missing → point user to <https://helm.sh/docs/intro/install/>. Do
 
 > Did Zymtrace send you a values file (often named `custom-values.yaml`, `backend-values.yaml`, or `<company>-values.yaml`)? It usually contains your license, DB modes, and other pre-agreed settings.
 
-If yes → read it, skip any decision-tree question whose answer is already set in the file, and go directly to Step 4 with `-f <their-file>`. Full policy: [`shared/conventions.md` § Customer-provided values file](../../shared/conventions.md#customer-provided-values-file).
+If yes → read it, skip any decision-tree question whose answer is already set in the file, and go directly to Step 4 with `-f <their-file>`. Full policy: [`shared/conventions.md` § The single values file](../../shared/conventions.md#the-single-values-file).
 
 If no → walk the decision tree below; at the end, write the result to `./custom-values.yaml` and tell them to commit it to source control.
 
@@ -193,6 +194,8 @@ helm repo update
 helm search repo zymtrace/backend --versions | head -5
 ```
 
+**Version to install.** `helm search` (above) is the source of truth for available chart versions — install the newest it lists unless the user pins one. **If it returns nothing** (repo just added and cache is stale, or air-gapped so the repo isn't reachable), fall back to the changelog at <https://docs.zymtrace.com/changelog> — the top entry is the latest release. Either way, tell the user which version you're about to install (and one line of what's new) before Step 4; they can pin an older one with `--version <X.Y.Z>`.
+
 ERROR: `not a valid chart repository` → network/proxy issue, or air-gapped. Switch to the air-gapped path.
 
 ### Step 2: Pick a values template and customize
@@ -323,7 +326,7 @@ If any box fails, hand off to the `troubleshoot-zymtrace-backend` skill, or use 
 ## Common pitfalls
 
 - **NGINX/Traefik missing `backend-protocol: "GRPC"`** → agents can't push profiles; UI may still work.
-- **ALB set to GRPC backend** → HTTP/1.1 clients get HTTP 464. Use HTTP + HTTP2. See [reference.md](reference.md#alb-http2-quirk).
+- **ALB set to GRPC backend** → HTTP/1.1 clients get HTTP 464. Use HTTP + HTTP2. See [`expose-zymtrace-backend` § ALB HTTP2 quirk](../expose-zymtrace-backend/reference.md#alb-http2-quirk).
 - **`proxy-body-size` unset / too small** → symbol uploads fail silently.
 - **NodePort + OIDC** → `redirectUri` must be set explicitly (chart can't auto-derive) and registered with the IdP.
 - **ClickHouse `use_existing.host` on native port `9000`** → ingest crashes. Use HTTP `8123`/`8443`.
