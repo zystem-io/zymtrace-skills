@@ -161,6 +161,31 @@ claude mcp add github --transport http https://api.githubcopilot.com/mcp/ \
 
 Then in a session: *"Analyze my GPU workload over the last hour, use the github MCP to find the code path in `myorg/myrepo`, and suggest a fix."* The agent pulls the flamegraph from zymtrace, locates the hot frame in the repo via GitHub MCP, and proposes the edit. The two MCPs compose without any extra configuration on the skill side.
 
+### Optional: fewer approval prompts during analysis
+
+Once connected, the analysis skills and the **zymtrace-perf-engineer** agent pull profiles, search your
+repo, and apply fixes — so the client prompts you to approve each tool call unless you've pre-approved it.
+That per-call prompting is the **client's permission system, not the skill or agent** (the agent is already
+written to run end to end without checkpointing). To let an investigation run without confirming every step:
+
+**Claude Code** — allow-list the tools in `~/.claude/settings.json` (all projects) or `.claude/settings.json` (one repo):
+```json
+{
+  "permissions": {
+    "allow": ["mcp__zymtrace", "Read", "Grep", "Glob", "Edit", "Write"]
+  }
+}
+```
+This pre-approves the MCP data pulls, source search, and the fix edit. Keep **`Bash` off** the allow-list (or
+scope it, e.g. `"Bash(git diff *)"`) so arbitrary shell — like a "run it to benchmark" step — still prompts.
+Alternatives without editing settings: press **Shift+Tab** to switch the session to *accept-edits* mode, or
+choose **"Yes, and don't ask again"** the first time each prompt appears (it writes the rule for you). For a
+fully unattended run in a **sandbox only**, `claude --dangerously-skip-permissions` bypasses every check — never
+on a machine with real credentials or prod access.
+
+**Codex / Cursor** — approval is governed by the app's own trust settings (Codex approval mode, Cursor's
+tool-approval toggles), not a file edited here; raise the workspace trust level to reduce prompts.
+
 ---
 
 ## Port-forward fallback (for in-cluster-only gateways)

@@ -50,17 +50,26 @@ the GPU↔CPU cross-view),
 pattern is memory allocation / GC (the JVM allocation profile — Java only).
 
 **Diagnosis is the midpoint, not the deliverable.** After the recap, locate the top 🔴 issue's hot
-frame in the working directory and apply the fix (code edit, or launch-config / Helm-values / env-var
-change for a flag fix). If the source isn't local, **ask the user for the path** — that's a
-legitimate stop. Apply one-line config/flag fixes directly and show the diff; for a risky or
-ambiguous change, propose the exact edit. **Always end with a follow-up question** (apply the next
-fix? run it to confirm the win? open a PR? drill into a 🟡?) — never hand back the recap alone.
+frame in the working directory and **apply the fix** (code edit, or launch-config / Helm-values /
+env-var change for a flag fix), then show the diff. Applying a localized, well-understood fix is the
+**default action, not a confirmation checkpoint** — don't ask "shall I apply this?"; apply it and
+show what changed.
+
+**One narrow exception:** a genuinely high-risk change — a real behavior change, a multi-file
+refactor, or a flag with material tradeoffs. You run unattended and can't get a mid-run answer, so
+don't block on it — put the **exact proposed diff in the recap**, marked as needing review, and let
+the closing question carry it. Never silently apply a risky change; never stall waiting to ask.
+
+If the source isn't in the working directory, **ask the user for the path** — a legitimate stop (a
+subagent surfaces this and finishes). **Always end with a follow-up question** (apply the next fix?
+run it to confirm the win? open a PR? drill into a 🟡?) — never hand back the recap alone.
 
 What makes you an *agent* rather than the inline skill: **you don't pause to confirm direction.**
 The skill, run interactively, checkpoints ("shall I pull the CPU side now?"). You don't — run the
-whole methodology end to end, apply the fix, and only come back with the finished report (or when
-genuinely blocked). Two things are *not* checkpoints to skip: needing a source path you can't find
-locally (ask), and the closing follow-up question (always include it).
+whole methodology end to end, apply the fix, and come back with the finished report. Only **two**
+things are legitimate stops: needing a source path you can't find locally (ask), and the closing
+follow-up question (always include it). Everything else — pulling the other view, editing a file
+you've located, choosing between equally safe fixes — you do **without asking**.
 
 ## Pre-flight: know the instance
 
