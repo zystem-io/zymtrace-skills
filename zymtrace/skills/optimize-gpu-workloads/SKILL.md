@@ -25,21 +25,27 @@ The MCP pulls the data; you do the analysis *and* the discipline of asking for b
 
 1. **Pull the workload's GPU metrics first, for context.** GPU utilization, memory used/bandwidth, SM efficiency, Tensor-Core activity, temperature, and PCIe throughput — plus CPU utilization — to establish whether the workload is GPU- or host-bound and which view will be informative. **If the workload is an inference server, also pull its framework metrics where collected — vLLM, SGLang, and NVIDIA Dynamo-Triton** (queue depth / pending requests, running-vs-waiting batch size, tokens/sec, KV-cache utilization, prefix-cache hit rate, time-to-first-token). These tell you whether the GPU is starved, saturated, or memory-bound *before* you read a single frame. Carry the numbers into the recap; they frame the flamegraph findings. (Interpretation patterns: [Inference-server specifics](#inference-server-specifics) below.)
 
+   On 26.8.1+ the metrics path is `discover_metrics` → `metrics` (reuse the profiling scope's filter fields). Prefer `percentiles` (e.g. `[0.5, 0.95, 0.99]`) for histograms over raw buckets; choose `interval` so the range yields tens of points, not thousands; **never sum utilization percentages or temperatures across GPUs**. A metric missing the entity's dimension is host-/cluster-wide context — don't attribute it to the workload.
+
 2. **Query the MCP for the workload's data** at the scope the user named (executable / container / pod / time range / model).
 
-3. **Pull the GPU view first** — use the **`hot_traces`** MCP tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`** (see the data-source policy in the shared doc). Read which kernels/frames are hot from the returned data.
+3. **Check `recommendations` before profiling** (the tool exists on both generations, 26.5.1+). Pull the pre-generated recommendations for the resolved scope with a **wide range (e.g. 30 days)** — recommendations are generated once when a problem is first seen, so the cause may already be known. Verify any hit against the flamegraphs below before repeating it; treat it as a lead, not the recap.
 
-4. **Then explicitly ask the MCP for the CPU view of the same workload, with the same filter** (same tool preference — `hot_traces`, else `flamegraph`). Use the exact filter values the MCP locked onto — same executable, same container, same time range. Don't hand-wave the filter; the cross-view is only useful when the slice matches.
+4. **Pull the GPU view first** — event kind `cuda` — use the **`hot_traces`** MCP tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`** (see the data-source policy in the shared doc). On 26.8.1+, **survey then drill**: default request first (`full_traces = false`, small pages), then re-fetch the top 1–3 traces in full — pass each `prefix_hash` back **verbatim** with `full_traces = true` and page size 1 — and pull `top_functions` on the same scope. **Before analyzing the full traces, fetch the matching analysis prompt** — `hot_trace_examine_gpu` via the MCP prompts protocol, or the `prompt://hot_trace?op=examine_gpu` resource — and analyze under its rubric: it's the same prompt the backend used to generate the stored `recommendations`, so your findings will line up with them (see "Analysis prompts" in the shared doc). Read which kernels/frames are hot from the returned data.
 
-5. **Cross-reference the two views** (against the step-1 metrics). Common reveals:
+5. **Then explicitly ask the MCP for the CPU view of the same workload, with the same filter** — event kind `on_cpu`, identical project, `expr`, and time range (same tool preference — `hot_traces`, else `flamegraph`). Use the exact filter values the MCP locked onto — same executable, same container, same time range. Don't hand-wave the filter; the cross-view is only useful when the slice matches. The two views' costs are incomparable units (`cuda` seconds vs `on_cpu` cores) — correlate the patterns, never add or compare the numbers.
+
+6. **Cross-reference the two views** (against the step-1 metrics). Common reveals:
    - GPU at 95% but tokens/sec underwhelming → look at CPU for tokenizer / sampling / Python-side overhead.
    - GPU at 60% utilization → the host is the bottleneck. The CPU view will name it.
    - Specific GPU kernel dominant → the CPU view often shows the launcher / scheduler calling it (launch-overhead vs kernel-time tradeoffs).
    - CPU dominated by `cudaMemcpy*` / `aten::*` synchronization → sync-bound on device transfers; the GPU view will show idle stretches.
 
-6. **Write the recap** using the output template (shared doc) with the GPU call-tree rendering below.
+   **Saturation first, kernels second.** The biggest GPU wins usually come from eliminating GPU idle time and unnecessary work — fewer launches, fused kernels, batched work, overlapped transfers, removed synchronization. Before recommending kernel-level tuning, ask whether the GPU is actually saturated: a hot kernel is often innocent when the host starves, over-synchronizes, or drip-feeds the device (a cheap kernel launched millions of times from a prefix loop is a caller-side problem, not a kernel problem).
 
-7. **Apply the fix** (shared doc — "Always recommend a fix — then apply it"). The recap is the midpoint, not the finish line.
+7. **Write the recap** using the output template (shared doc) with the GPU call-tree rendering below.
+
+8. **Apply the fix** (shared doc — "Always recommend a fix — then apply it"). The recap is the midpoint, not the finish line.
 
 ## Inference-server specifics
 
@@ -89,6 +95,7 @@ constraint is on the GPU side". Keep short.>
 - [ ] Both GPU **and** CPU flamegraphs pulled for the **same** filter (same executable / container / time).
 - [ ] The cross-view interpretation given — which side is the constraint, and why.
 - [ ] Observed call tree rendered with `→` kernel annotations + `⚠️` sync markers, followed by the CPU cross-check.
+- [ ] On 26.8.1+: `recommendations` checked with a wide range before profiling; `hot_traces` surveyed then drilled (`prefix_hash` verbatim, `full_traces = true`, page size 1); `top_functions` pulled on the same scope; the `examine_gpu` analysis prompt fetched before interpreting full traces.
 
 (Plus the common Done checklist in the shared doc — metrics first, template, every 🔴/🟡 has a `Fix:`, fix applied, follow-up question.)
 
@@ -98,6 +105,8 @@ constraint is on the GPU side". Keep short.>
 - **Different filters on the two views.** Cross-view only works when the slice matches. Re-use the MCP's resolved filter, don't paraphrase it.
 - **Expecting the MCP to name the pattern for you.** It returns raw data — frames, kernels, percentages. Naming the pattern (kernel-launch-bound, memory-bandwidth bound, DataLoader-starved, NCCL-collective-bound, sync-bound) is *your* job.
 - **Missing a host-side bottleneck.** A GPU at 60% means the host is starving it; the CPU cross-check is where you find out why.
+- **Tunneling on the hottest kernel.** Read the prefix for the launch pattern first — an unfused chain, a per-item launch loop, or a sync/transfer pattern around the kernel is usually the real problem, and it's caller-side.
+- **Comparing costs across event kinds.** `cuda` time (seconds) and `on_cpu` time (cores) have different units and denominators — correlate the patterns, never add or rank the numbers against each other.
 
 ## Security constraints
 

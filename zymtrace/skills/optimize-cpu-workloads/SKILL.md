@@ -19,7 +19,7 @@ Connection setup lives in [`configure-zymtrace-mcp`](../configure-zymtrace-mcp/S
 
 > **"What's consuming the most CPU over the last 1 hour?"** · **"Which of my apps should I optimize first?"**
 
-Most CPU requests are **rank-first** (see the shared doc): the user wants to know *which* thing is hottest or where the best return is. Start by ranking with the MCP's **topentities** (hottest container/pod/host/process) or **topfunctions** (hottest functions), then drill into the top user-owned code with `hot_traces`. The recap leads with the ranking, then the analysis of that entry. If the user already named a workload ("analyze my API service"), skip the ranking and drill straight in.
+Most CPU requests are **rank-first** (see the shared doc): the user wants to know *which* thing is hottest or where the best return is. Start by ranking with the MCP's entity ranking — **`discover`** on 26.8.1+, **`topentities`** on older instances (hottest container/pod/host/process) — or the functions ranking (**`top_functions`** / **`topfunctions`**), then drill into the top user-owned code with `hot_traces`. The recap leads with the ranking, then the analysis of that entry. If the user already named a workload ("analyze my API service"), skip the ranking and drill straight in.
 
 Default to the last 1 hour if no range is given, and the whole cluster if no workload is named (ask which to narrow if results look noisy).
 
@@ -27,24 +27,28 @@ Default to the last 1 hour if no range is given, and the whole cluster if no wor
 
 The MCP pulls the data; you do the analysis. Establish a data path first (pre-flight, in the shared doc).
 
-1. **Rank first if the request is rank-shaped** ("what's eating my CPU", "which process", "biggest ROI") — use **topentities** / **topfunctions** (concise rankings), then drill into the top entry with `hot_traces`. **Rank by cores consumed** (CPU-cores, i.e. the absolute on-CPU time the entity holds — not just % of one core), so the ranking reflects real machine cost. Present it as a **table** (see [Ranking table](#ranking-table-rank-first-output)) — one row per consumer with cores over the window, **annualized core-hours** (`cores × 8,760`), and **annualized cost** only; host / container / deployment go in a reference line below the table, not as columns. Then pick the top entry. Mark third-party / unmodifiable system processes (kube-proxy, kubelet, systemd, the kernel) with **❌** and drill into the highest user-owned entry. See scope-to-own-code/ROI in the shared doc.
+1. **Rank first if the request is rank-shaped** ("what's eating my CPU", "which process", "biggest ROI") — use **`discover`** / **`top_functions`** on 26.8.1+ (**`topentities`** / **`topfunctions`** on older instances), then drill into the top entry with `hot_traces`. **Rank by cores consumed** (CPU-cores, i.e. the absolute on-CPU time the entity holds — not just % of one core), so the ranking reflects real machine cost; `discover`'s total weight for `on_cpu` is already cores. Present it as a **table** (see [Ranking table](#ranking-table-rank-first-output)) — one row per consumer with cores over the window, **annualized core-hours** (`cores × 8,760`), and **annualized cost** only; host / container / deployment go in a reference line below the table, not as columns. Then pick the top entry. Mark third-party / unmodifiable system processes (kube-proxy, kubelet, systemd, the kernel) with **❌** and drill into the highest user-owned entry. See scope-to-own-code/ROI in the shared doc.
 
 2. **Pull the entity's CPU metrics first, for context.** CPU utilization (and run-queue / throttling if available) — to establish how hot the workload actually runs and whether it's CPU-bound or stalled (waiting on locks, I/O, syscalls). Carry these numbers into the recap.
 
    **Escalation check (when you arrived here by the entity-only default).** If the metrics show **real GPU activity** (non-trivial GPU utilization / memory), this is a GPU workload, not a CPU-only one — stop and hand off to [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md) for the GPU↔CPU cross-view. Don't analyze a GPU workload from the CPU side alone. (Skip this when the user explicitly asked a CPU question, or the deployment has no GPUs.)
 
-3. **Pull the CPU call tree** at the scope the user named (executable / container / pod / host / time range) — use the **`hot_traces`** MCP tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`** (see the data-source policy in the shared doc). Read which frames are hot from the returned data.
+3. **Check `recommendations` before profiling** (the tool exists on both generations, 26.5.1+). Pull the pre-generated recommendations for the resolved scope with a **wide range (e.g. 30 days)** — they're generated once when a problem is first seen, so the cause may already be known. Verify any hit against your own profiling below before repeating it; treat it as a lead, not the recap.
 
-4. **Name the pattern.** The MCP returns raw frames + percentages; naming the dominant pattern is *your* job. Common CPU patterns:
+4. **Pull the CPU call tree** at the scope the user named (executable / container / pod / host / time range), event kind `on_cpu` — use the **`hot_traces`** MCP tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`** (see the data-source policy in the shared doc). On 26.8.1+, **survey then drill**: default request first (`full_traces = false`, small pages), then re-fetch the top 1–3 traces in full — pass each `prefix_hash` back **verbatim** with `full_traces = true` and page size 1 — and pull `top_functions` on the same scope. **Before analyzing the full traces, fetch the matching analysis prompt** — `hot_trace_examine` via the MCP prompts protocol, or the `prompt://hot_trace?op=examine` resource (`op=examine_third_party` when the hot code is third-party you can only configure) — and analyze under its rubric: it's the same prompt the backend used to generate the stored `recommendations`, so your findings will line up with them (see "Analysis prompts" in the shared doc). Read which frames are hot from the returned data.
+
+5. **Name the pattern.** The MCP returns raw frames + percentages; naming the dominant pattern is *your* job. Common CPU patterns:
    - **Lock contention / scheduling** — time in `futex`, `pthread_mutex_lock`, `sync.(*Mutex).Lock`, runtime scheduler frames.
    - **Allocation churn / GC** — `malloc`/`free`, `gc`, `mark`, `tcmalloc`, allocator frames dominating; **on a Java service** hand off to [`optimize-memory-allocation`](../optimize-memory-allocation/SKILL.md) to name the allocation sites (JVM only).
    - **Serialization / parsing** — JSON/protobuf encode-decode, regex compilation, string formatting in the hot path.
    - **Syscall- / I/O-bound** — heavy `read`/`write`/`epoll_wait`/`send`/`recv`; the CPU is shuffling bytes or waiting.
    - **Compute hot loop** — a single user function genuinely dominating CPU time (the clean ROI case).
 
-5. **Write the recap** using the output template (shared doc) with the CPU call-tree rendering below.
+   **Read the prefix before blaming the leaf.** A hot trace is a shared **prefix** (why the code runs — caller, loop, fan-out, frequency) plus **suffixes** (what burns the cycles); suffix costs don't sum to the trace total. A cheap function called millions of times from a prefix loop is a caller-side problem — ask whether the work should exist at all, happen less often, or be batched/cached/precomputed before micro-optimizing the leaf. And if the step-2 metrics say the workload is stalled rather than CPU-bound, the wait side lives in the `off_cpu` event kind — a separate, incomparable view (never add its costs to `on_cpu`).
 
-6. **Apply the fix** (shared doc — "Always recommend a fix — then apply it"). The recap is the midpoint, not the finish line.
+6. **Write the recap** using the output template (shared doc) with the CPU call-tree rendering below.
+
+7. **Apply the fix** (shared doc — "Always recommend a fix — then apply it"). The recap is the midpoint, not the finish line.
 
 ## Cost: annualize the cores
 
@@ -76,7 +80,7 @@ Lead a rank-first recap with a table — one row per top consumer, hottest first
 
 ## Allocation/GC-bound? Hand off
 
-When the CPU pattern is **allocation churn / GC** (step 4) — allocator and GC frames dominating on-CPU time — the on-CPU view can't name *which* call sites allocate. **On a Java service**, hand off to [`optimize-memory-allocation`](../optimize-memory-allocation/SKILL.md) (the JVM allocation profile, weighted by bytes) to turn "GC is hot" into a named, fixable allocation site. (Non-Java workloads have no allocation profile — stay here.)
+When the CPU pattern is **allocation churn / GC** (step 5) — allocator and GC frames dominating on-CPU time — the on-CPU view can't name *which* call sites allocate. **On a Java service**, hand off to [`optimize-memory-allocation`](../optimize-memory-allocation/SKILL.md) (the JVM allocation profile, weighted by bytes) to turn "GC is hot" into a named, fixable allocation site. (Non-Java workloads have no allocation profile — stay here.)
 
 ## CPU call-tree rendering (Observed Call Tree section)
 
@@ -105,6 +109,7 @@ The output-template skeleton is in the shared doc. The CPU **Observed Call Tree*
 - [ ] Rate sourced from a saved `zymtrace-vcpu-rate` (AGENTS.md/CLAUDE.md) or the user; if the default was assumed, it was labelled and the user asked for their real rate (and offered persistence).
 - [ ] CPU metrics pulled first (utilization, and throttling/run-queue if available) and carried into the recap.
 - [ ] CPU flamegraph pulled at the named scope; the dominant pattern named (lock contention, allocation/GC, serialization, syscall-bound, hot loop).
+- [ ] On 26.8.1+: `recommendations` checked with a wide range before profiling; `hot_traces` surveyed then drilled (`prefix_hash` verbatim, `full_traces = true`, page size 1); `top_functions` pulled on the same scope; the matching analysis prompt (`examine` / `examine_third_party`) fetched before interpreting full traces.
 - [ ] Allocation profile pulled for the same filter **if** the pattern looked allocation/GC-bound.
 
 (Plus the common Done checklist in the shared doc — template, every 🔴/🟡 has a `Fix:`, fix applied, follow-up question.)
@@ -114,6 +119,8 @@ The output-template skeleton is in the shared doc. The CPU **Observed Call Tree*
 - **Spending 🔴 issues on code the user can't change.** kube-proxy / kubelet / systemd / kernel frames are context, not action items — keep them in the ranking, mark them non-actionable, and lead with the top user-owned entry. ROI = time spent × how fixable it is.
 - **Expecting the MCP to name the pattern for you.** It returns raw data — frames, percentages. Naming the pattern (lock-contention, allocation-churn, serialization, syscall-bound) is *your* job.
 - **Stopping at "here's the data" without a recommendation.** Always close with a specific fix to try, grounded in the frame names + percentages.
+- **Tunneling on the hottest leaf.** A 2–3% leaf isn't the answer — use it to identify the subsystem, then read the prefix for the caller pattern amplifying it. The highest-confidence wins are usually caller-side: remove, batch, cache, precompute.
+- **Blending units or event kinds.** Cores, CPU-seconds, wall time, and shares have different denominators — report each with its unit. `on_cpu` and `off_cpu` costs are incomparable; never add them.
 - **Stopping at the recap.** Diagnosis is the midpoint. Locate the source and apply the top fix; if you can't find it locally, ask for the path. Never hand back analysis alone.
 - **Reaching for GPU framing.** This is a CPU-only skill. If the user actually has GPU workloads, route to [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md).
 

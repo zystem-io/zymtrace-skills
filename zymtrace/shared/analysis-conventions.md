@@ -31,12 +31,41 @@ Then proceed. Keep it to 3–5 bullets — the shape of the run, not a sub-task 
 
 All metrics and flamegraphs come from the user's live zymtrace instance:
 
-- **MCP first** (preferred). Use MCP resources first, then tools as a fallback (per the server's own instructions).
+- **MCP first** (preferred). On 26.8.1+ the tools are the primary path and MCP *resources* are analysis prompts (`prompt://hot_trace?op=…`); on older instances follow the server's own instructions (resources first, then tools).
 - **Gateway API as fallback** when the MCP isn't available — read its endpoints from `<gateway-url>/api-docs/openapi.json`; don't guess params.
 
-**Pulling traces — `hot_traces` first.** For the call-tree / flamegraph step on **all three profile types — CPU, GPU, and allocation (ALLOC)** — prefer the **`hot_traces`** MCP tool when it's available; it's present on zymtrace **26.5.1 and above**. Fall back to the **`flamegraph`** MCP tool on older instances or whenever `hot_traces` isn't exposed. Try `hot_traces` first and drop to `flamegraph` if it's absent or errors; don't ask the user which version they run — detect it from the tool list.
+**Tool surface — two generations; detect from the tool list, never ask the user their version.** zymtrace **26.8.1** rebuilt the MCP around scope-first discovery:
 
-This tool preference is for the **call-tree / flamegraph** step only. For **ranking** ("which entity/function is hottest"), still use the concise **`topentities`** / **`topfunctions`** tools — `hot_traces` returns full trace data, more than you need to rank. Rank with `top*`, then pull the hot entry's call tree with `hot_traces`.
+- **26.8.1+ (rebuilt MCP):** `discover_projects` / `discover` (scope resolution + entity ranking), `recommendations`, `hot_traces`, `top_functions`, `discover_metrics` + `metrics`, `flamegraph` (CSV, last resort), `get_datetime` — plus analysis prompt resources (`prompt://hot_trace?op=examine|examine_gpu|examine_third_party`). If `discover` or `top_functions` is in the tool list, you're on this surface — follow the call order below.
+- **26.5.1 – 26.8.0:** rank with **`topentities`** / **`topfunctions`** (concise rankings — `hot_traces` returns full trace data, more than you need to rank), pull call trees with **`hot_traces`**, fall back to **`flamegraph`**.
+- **Pre-26.5.1:** no `hot_traces` — use **`flamegraph`**.
+
+*Version signals, if you want to confirm:* no MCP **tool** returns the server version — the tool list is the discriminator. The version is reported in the MCP `initialize` handshake (`serverInfo.version`, harness-dependent whether you can see it) and at **`GET <gateway-url>/api-docs/openapi.json` → `.info.version`**. Both are baked at build time and can lag the actual code on pre-release deployments — when the version string and the tool list disagree, trust the tool list.
+
+**Call order on the rebuilt MCP (26.8.1+)** — mirrors the server's own instructions; run 1–3 in order, however small the observed cost:
+
+1. **Resolve the scope** — `discover_projects` / `discover` until project, event kind, and time range are concrete. Event kinds: `on_cpu` (CPU work), `off_cpu` (waiting), `cuda` (GPU), `alloc` (allocated bytes) — default `on_cpu`, add `cuda` for GPU questions. Encode the user's scope clues in `expr` (`And`/`Or`/`Not` over host / container / pod / pod-label / deployment / namespace / thread / tag / cluster / GPU / Slurm / exe / script fields), preserving their boolean logic and negations; omit unknown details, never invent them. **Discovery stats only select the scope — they are never the answer.**
+2. **Reuse `recommendations`** for the scope with a **wide range (e.g. 30 days)** before profiling — recommendations are generated once when a problem is first seen, so the cause may already be known. Verify hits against your own profiling before repeating them; pass `PrefixHash` to fetch the recommendations for one specific trace. (The `recommendations` tool exists on the older 26.5.1+ surface too, with the same wide-window advice — reuse it there as well.)
+3. **Profile with `hot_traces`: survey, then drill.** Full traces are massive (~5k tokens each): survey with the defaults (`full_traces = false`, small pages), then re-fetch each of the top 1–3 traces in full — pass its `prefix_hash` back **verbatim** with `full_traces = true` and page size 1. Narrow `expr` before fetching full traces. Then `top_functions` on the same scope. **Before interpreting full traces, fetch the matching analysis prompt** (next section) — retrieve first, then analyze.
+4. **Correlate metrics only when a concrete hypothesis needs one** — `discover_metrics`, then `metrics`, reusing the profiling scope's filter fields. A metric missing the entity's dimension (e.g. no Exe attribute) is host- or cluster-wide context — never attribute it to that entity. For histograms prefer `percentiles` (e.g. `[0.5, 0.95, 0.99]`) over raw buckets; choose `interval` so the range yields tens of points, not thousands; never sum temperatures or utilization percentages across devices. (This restraint governs *correlation during trace analysis*; the skills' "pull the entity's metrics first" triage step — utilization context to pick the right view — is separate and stays.)
+5. **`flamegraph` is a last resort** (tens of thousands of tokens) — don't reach for it until you've fetched the top traces in full via `hot_traces`; those are far cheaper and usually sufficient. The tree is culled to ~600 highest-cost nodes; narrow `expr` to zoom into a subtree instead of paginating.
+
+**Analysis prompts (26.8.1+) — fetch before analyzing full traces.** The server ships expert analysis prompts and exposes each one twice: via the **MCP prompts protocol** (`hot_trace_examine`, `hot_trace_examine_gpu`, `hot_trace_examine_third_party`) and mirrored as **resources** (`prompt://hot_trace?op=examine|examine_gpu|examine_third_party`) for harnesses that don't support the prompts protocol — use whichever your client supports. Retrieve the ONE prompt matching the trace, then analyze:
+
+- `op=examine` — the user's own CPU/system code.
+- `op=examine_gpu` — CUDA/GPU work (frames marked `cuda:`).
+- `op=examine_third_party` — hot path inside third-party software the user can only configure, not patch.
+
+**These are the exact prompts the backend uses to generate the stored `recommendations`.** Analyzing under the same rubric keeps your findings consistent with what the `recommendations` tool and the UI already show — hits corroborate instead of contradicting, and your drill-down extends them rather than reinventing them. The prompts carry the analysis discipline (classify executing-vs-waiting, read prefix and suffix differently, footprint patterns, root-cause priority order, certainty rules) — follow it. One precedence rule: the prompt's own "Output format" section (Diagnosis/Evidence/Recommendations/…) describes the server's recommendation records; for interactive runs, keep rendering the recap with the **Output template** below — prompt for the reasoning, skill template for the presentation. If neither the prompts protocol nor resources are reachable, proceed without; don't block the analysis on it.
+
+**Cross-call discipline (any MCP generation):**
+
+- Keep project, range, and filters **identical** across calls when correlating data — a cross-view or metric pulled on a different slice proves nothing.
+- Event kinds are incomparable: never add or compare costs across `on_cpu` / `off_cpu` / `cuda` / `alloc`. Cost units follow the event kind — CPU cores for `on_cpu`, bytes for `alloc`, seconds otherwise. CPU-seconds, average cores, wall time, and shares have different denominators — report each with its unit, never blend them.
+- Copy returned IDs and names (`project_id`, `prefix_hash`, metric names, field values) back **verbatim**; never invent them.
+- An empty filtered result proves only that the filter matched nothing. Retry via `discover_projects` (or drop `expr`), or widen the range progressively (24h → a week → a month; don't exceed a month unless asked) before concluding data is absent.
+
+**Reading a hot trace:** each trace is a shared frame **prefix** (why the code runs — caller, frequency, fan-out) plus branching **suffixes** (what consumes the cost). Suffix costs are individual and do **not** sum to the trace total. The reported global non-idle ratio is relative to the request filter — after filtering by `prefix_hash` it nears 1.0 and no longer reflects the original scope's share.
 
 Two hard prohibitions:
 
@@ -69,7 +98,7 @@ Then **let the metrics decide.** You pull the entity's metrics first regardless 
 ## Two request shapes: rank-first vs. drill-down
 
 - **Drill-down** — the user already named a workload ("analyze my training job", "my API service"). Go straight to your skill's protocol.
-- **Rank-first** — the user asks *which* thing is hottest or where the best return is ("which process uses the most CPU", "what's eating my CPU", "biggest ROI", "what should I optimize first"). Start by ranking with the MCP's **topentities** (hottest container/pod/host/process) or **topfunctions** (hottest functions), then drill into the top entry with `hot_traces`. The recap leads with the ranking, then the analysis of the top user-owned entry.
+- **Rank-first** — the user asks *which* thing is hottest or where the best return is ("which process uses the most CPU", "what's eating my CPU", "biggest ROI", "what should I optimize first"). Start by ranking with the MCP's entity ranking — **`discover`** on 26.8.1+, **`topentities`** on older instances — or the functions ranking (**`top_functions`** / **`topfunctions`**), then drill into the top entry with `hot_traces`. Note `discover`'s ranking axis: its stats blocks are per **(project, event kind, exe/script)** entity, each carrying total weight and top-k attribute values (hosts, containers, pods, GPUs, tags) — so a container/pod/host ranking is read off those attribute breakdowns, or produced by narrowing `expr`, not returned as its own list the way `topentities` did. The recap leads with the ranking, then the analysis of the top user-owned entry.
 
 **Always exclude the zymtrace profiler itself** (the zymtrace agent — e.g. `zymtrace-profiler` / the profiler DaemonSet) from rankings entirely. It's the tool doing the measuring; it surfacing near the top almost always just means the cluster is otherwise idle, not that it needs fixing. **Drop it from the table** rather than listing it (note "(zymtrace profiler excluded)" if it would have ranked) — this is a hard skip, distinct from the ❌ reference rows below.
 
