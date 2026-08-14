@@ -94,10 +94,11 @@ connect, then continue.
      signals (model, service, file, pod, vLLM, SGLang). If two are equally likely, pick the most
      specific and state it in the recap.
    - **Rank-first** ("which process uses the most CPU", "biggest ROI", "what should I optimize
-     first") → rank consumers with the MCP's **topentities** / **topfunctions** (concise rankings),
-     then pick the top entry and drill in with `hot_traces`. **Always exclude the zymtrace profiler
-     itself** (`zymtrace-profiler`) from the ranking — it being hot usually just means the cluster
-     is idle, not that it needs fixing. When the user says
+     first") → rank consumers with the MCP's entity ranking — **`discover`** on 26.8.1+,
+     **`topentities`** on older instances — or the functions ranking (**`top_functions`** /
+     **`topfunctions`**), then pick the top entry and drill in with `hot_traces`. **Always exclude
+     the zymtrace profiler itself** (`zymtrace-profiler`) from the ranking — it being hot usually
+     just means the cluster is idle, not that it needs fixing. When the user says
      "focus on my own apps" (or the top
      consumer is unmodifiable — kube-proxy, kubelet, systemd, the kernel), keep those in the
      ranking for context but mark them non-actionable, and drill into the highest user-owned
@@ -106,16 +107,29 @@ connect, then continue.
 
 2. **Pull the entity's metrics first** — CPU utilization, plus GPU utilization / memory / SM
    efficiency for GPU workloads. Metrics tell you whether the workload is actually GPU-bound and
-   which view matters. Use an MCP metrics tool if one exists; **if none does, the gateway REST
-   API is the normal path** (not a fallback) — find the metrics endpoint in
+   which view matters. On 26.8.1+ use `discover_metrics` → `metrics` (histograms → `percentiles`;
+   never sum utilization percentages across devices; a metric missing the entity's dimension is
+   broader context, not the entity's). If no MCP metrics tool exists, **the gateway REST API is
+   the normal path** (not a fallback) — find the metrics endpoint in
    `<gateway-url>/api-docs/openapi.json` and call it.
 
-3. **Pull the CPU call tree** — the baseline for every investigation. Use the **`hot_traces`** MCP
-   tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`** (detect from the tool
-   list; don't ask the user their version). If a Java service's hot pattern is allocator/GC frames, also
+   **Then check `recommendations`** (present on 26.5.1+, both tool generations) for the resolved scope with a wide range (e.g. 30
+   days) before profiling — the cause may already be known; verify hits against your own
+   profiling before repeating them.
+
+3. **Pull the CPU call tree** (`on_cpu`) — the baseline for every investigation. Use the
+   **`hot_traces`** MCP tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`**
+   (detect from the tool list; don't ask the user their version). On 26.8.1+, **survey then
+   drill**: default request first, then the top 1–3 traces in full (`prefix_hash` verbatim,
+   `full_traces = true`, page size 1), plus `top_functions` on the same scope. **Before
+   analyzing full traces, fetch the matching analysis prompt** — `hot_trace_examine` /
+   `hot_trace_examine_gpu` / `hot_trace_examine_third_party` via the MCP prompts protocol, or
+   the mirrored `prompt://hot_trace?op=…` resource — and analyze under its rubric: it's the
+   same prompt the backend used to generate the stored `recommendations`, so your findings
+   will line up with them. If a Java service's hot pattern is allocator/GC frames, also
    pull the **JVM allocation** profile and follow `optimize-memory-allocation` to name the sites.
 
-4. **Pull the GPU call tree only if it's a GPU workload** (same tool preference — `hot_traces`, else
+4. **Pull the GPU call tree (`cuda`) only if it's a GPU workload** (same tool preference — `hot_traces`, else
    `flamegraph`) — i.e. the prompt mentions GPU (the
    usual signal — users say "GPU" when they mean it), or step-2 metrics show real GPU activity.
    For a GPU workload, pull **both** and cross-view with the **same filter** (the bottleneck often
