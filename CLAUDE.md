@@ -122,7 +122,14 @@ No API keys, cluster, or network access are needed.
 
 ## Releasing a new version
 
-**Edit the `VERSION` file and commit it to `main`. That's the whole release step.**
+**Releases follow zymtrace-docs automatically.** When the `VERSION` file changes on `main` in
+zymtrace-docs, its **Notify zymtrace-skills** workflow sends a `docs-version` repository dispatch.
+The **Sync version from docs** workflow here (`.github/workflows/docs-version.yml`) sets `VERSION`
+to that version, runs `scripts/sync-version.sh`, runs the structural tests, and commits
+`bump to X.Y.Z` to `main`. It does nothing if the version is unchanged and refuses to downgrade.
+To run it by hand, start **Sync version from docs** from the Actions tab with a version.
+
+You can still release manually by editing the `VERSION` file and committing it to `main`:
 
 ```bash
 echo 26.6.0 > VERSION
