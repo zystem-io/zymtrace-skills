@@ -57,7 +57,8 @@ Things you may need to ask:
 | Agent pods **CrashLoopBackOff / not Ready** | [§ CrashLoopBackOff](#crashloopbackoff) |
 | Agent pods **ImagePullBackOff** | [§ ImagePullBackOff](#imagepullbackoff) |
 | Agent **OOMKilled** / pod restart cycle | [§ OOMKilled / restart cycle](#oomkilled--restart-cycle) |
-| **CPU profiles flow, but no GPU profiles** | [§ No GPU profiles](#no-gpu-profiles) |
+| **CPU profiles flow, but no GPU profiles** (NVIDIA or AMD) | [§ No GPU profiles](#no-gpu-profiles) |
+| **No off-CPU profiles** | [§ No off-CPU profiles](#no-off-cpu-profiles) |
 | **NVML library not found** in agent logs | [§ NVML library not found](#nvml-library-not-found) |
 | **PC sampling enabled but no SASS-level data** | [§ PC sampling produces nothing](#pc-sampling-produces-nothing) |
 | **License rejected** on the profiler side | [§ License rejected](#license-rejected) |
@@ -182,7 +183,7 @@ Full sizing reference: [install-zymtrace-profiler reference.md § Resource sizin
 
 ## No GPU profiles
 
-Agent is running, CPU profiles appear in the UI, but no GPU/CUDA traces. The agent is healthy — the **workload** isn't loading the CUDA injection library.
+Agent is running, CPU profiles appear in the UI, but no GPU traces. The agent is healthy — the **workload** isn't loading the GPU profiler library (or isn't doing GPU work yet).
 
 ##### Claude runs
 ```bash
@@ -198,13 +199,28 @@ level=info msg="Intercepted zymtrace implant at /proc/576236/root//var/lib/zymtr
 
 If the search is empty, **no workload is being GPU-profiled**. Walk the workload-side checks:
 
-1. **`cudaProfiler.enabled: true`** in the agent's values? `helm get values <REL> -n <NS> | grep -A1 cudaProfiler`. If not, enable it and `helm upgrade --install ... --reset-then-reuse-values --atomic`.
-2. **Library on the host?** `kubectl debug node/<gpu-node> -it --image=busybox -- ls /host/var/lib/zymtrace/profiler` (needs node-debugger RBAC). Should contain `libzymtracecudaprofiler.so`. Absent → the agent didn't extract it; restart the DaemonSet pod on that node.
-3. **Workload has the env var?** `kubectl get pod <gpu-workload> -n <ws-ns> -o jsonpath='{.spec.containers[*].env[?(@.name=="CUDA_INJECTION64_PATH")]}'`. Empty → patch the workload's pod spec.
-4. **Workload has the volume mount?** Same pod, look for `mountPath: /var/lib/zymtrace/profiler` or `/opt/zymtrace/profiler`. Missing → patch the workload spec.
-5. **Workload started before the agent?** Restart the workload after the DaemonSet is Ready on its node.
+1. **`cudaProfiler.enabled: true`** in the agent's values? `helm get values <REL> -n <NS> | grep -A1 cudaProfiler`. If not, enable it and `helm upgrade --install ... --reset-then-reuse-values --atomic`. (This one switch extracts both the CUDA and ROCm libraries.)
+2. **Library on the host?** `kubectl debug node/<gpu-node> -it --image=busybox -- ls /host/var/lib/zymtrace/profiler` (needs node-debugger RBAC). Should contain `libzymtracecudaprofiler.so` (NVIDIA) or `libzymtracerocmprofiler.so` + `librocprofiler-sdk.so.1` (AMD). Absent → the agent didn't extract it; restart the DaemonSet pod on that node.
+3. **NVIDIA with automatic injection?** Check the rule under **Settings → Agent Config → CUDA Profiler** in the UI: **Inject CUDA Profiler** is on and its process query actually matches the workload (same container / namespace / executable names as in the query bar). If there's no rule, use manual injection (next steps) or ask the user to add one.
+4. **Workload has the env var?** NVIDIA: `kubectl get pod <gpu-workload> -n <ws-ns> -o jsonpath='{.spec.containers[*].env[?(@.name=="CUDA_INJECTION64_PATH")]}'`. AMD: the same for **both** `ROCP_TOOL_LIBRARIES` and `ROCPROFILER_REGISTER_LIBRARY`. Empty → patch the workload's pod spec.
+5. **Workload has the volume mount?** Same pod, look for `mountPath: /var/lib/zymtrace/profiler` or `/opt/zymtrace/profiler`, and check the env var points inside it. Missing → patch the workload spec.
+6. **Library loaded?** Add `RUST_LOG=zymtracecudaprofiler=info` + `ZYMTRACE_CUDAPROFILER__QUIET=false` (AMD: `RUST_LOG=zymtracerocmprofiler=info` + `ZYMTRACE_ROCMPROFILER__QUIET=false`) to the workload and check its logs for the profiler's startup line.
+7. **Workload started before the agent?** Restart the workload after the DaemonSet is Ready on its node. AMD workloads must always be (re)started with the env vars set — the ROCm profiler can't attach to a running process.
+8. **Is the GPU actually busy?** Kernels are profiled only while they run. An idle inference engine produces no GPU profiles — send it requests.
 
-Workload-side recipes (vLLM, SGLang, Triton, PyTorch / training jobs): [install-zymtrace-profiler reference.md § Profiling real workloads](../install-zymtrace-profiler/reference.md#profiling-real-workloads-training-and-inference).
+Workload-side recipes (vLLM, SGLang, Dynamo-Triton, TensorRT-LLM, PyTorch / training jobs, NVIDIA and AMD): [install-zymtrace-profiler reference.md § Profiling real workloads](../install-zymtrace-profiler/reference.md#profiling-real-workloads-training-and-inference).
+
+---
+
+## No off-CPU profiles
+
+Off-CPU profiling is **off by default**, so an empty off-CPU view usually means it was never enabled — not a broken agent. It's a host-wide setting.
+
+1. **Enabled by flag?** `helm get values <REL> -n <NS> | grep -i off-cpu` → look for `--enable-off-cpu` (or a non-zero `--off-cpu-sampling-rate`).
+2. **Enabled by rule?** Check **Settings → Agent Config → Off-CPU** in the UI for a rule with **Off-CPU profiling** on whose CEL expression matches the host (rules target hosts, not processes; an expired rule no longer applies).
+3. **Neither?** Ask the user before enabling it — via a rule in the UI (no redeploy) or the flag (`helm upgrade ... --reset-then-reuse-values`). Then wait a few minutes for data.
+
+Docs: <https://docs.zymtrace.com/features/off-cpu-profiling>
 
 ---
 

@@ -239,9 +239,25 @@ This is **also useful for customer demos** — short, predictable, no model weig
 
 ## Profiling real workloads (training and inference)
 
-Installing the profiler agent gets it running on every node — that's the eBPF profiler for CPU code. **GPU profiling additionally requires the workload to load the CUDA injection library**, controlled per-process via `CUDA_INJECTION64_PATH`. How you set that depends on the install method and workload type.
+Installing the profiler agent gets it running on every node — that's the eBPF profiler for CPU code. **GPU profiling additionally requires the GPU profiler library to be loaded into the workload process.** There are two ways to do that.
 
-> The same one env var (`CUDA_INJECTION64_PATH`) enables profiling for every CUDA framework: PyTorch, DDP, FSDP, DeepSpeed, Megatron, vLLM, SGLang, Triton, TGI, custom CUDA code. The variation between training vs inference is mostly about *how* you set the env var (Slurm prolog, k8s pod spec, Docker `-e`).
+### Automatic injection via the UI (NVIDIA, recommended)
+
+On NVIDIA, the profiler can inject the CUDA profiler into matching processes itself — no manifest or env-var changes on the workload. In the zymtrace UI: **Settings → Agent Config → CUDA Profiler → Add Rule**, set a process query (CEL — the same syntax as the query bar, e.g. a container, namespace, or executable), and turn on **Inject CUDA Profiler**. The **GPU Profiler Config** setting on the same tab takes the `ZYMTRACE_CUDAPROFILER__*` options. Rules apply on the fly; no profiler or workload restart.
+
+- **NVTX is not captured in this mode.** If the user needs NVTX ranges, use manual injection.
+- **AMD (ROCm) has no automatic injection** — ROCm workloads must be started with the env vars below.
+
+Docs: <https://docs.zymtrace.com/install/profiler/profiling-gpu-workloads#automatic-injection>
+
+### Manual injection via env vars
+
+| GPU | Set on the workload | Library (host path the DaemonSet populates: `/var/lib/zymtrace/profiler`; binary install: `/opt/zymtrace/profiler`) |
+|---|---|---|
+| **NVIDIA (CUDA)** | `CUDA_INJECTION64_PATH` | `libzymtracecudaprofiler.so` |
+| **AMD (ROCm)** | `ROCP_TOOL_LIBRARIES` **and** `ROCPROFILER_REGISTER_LIBRARY` | `libzymtracerocmprofiler.so` and `librocprofiler-sdk.so.1` |
+
+The same variables enable profiling for every framework: PyTorch, DDP, FSDP, DeepSpeed, Megatron, JAX, vLLM, SGLang, Dynamo-Triton, TensorRT-LLM, custom CUDA/HIP code. The variation between training and inference is mostly *where* you set them (Slurm prolog, k8s pod spec, Docker `-e`). The ROCm profiler can't attach to an already-running process — restart the workload with the variables set.
 
 ### Training jobs (the env-var-and-done case)
 
@@ -298,99 +314,33 @@ spec:
 
 Multi-node DDP / FSDP / DeepSpeed don't need special treatment — each pod loads the library independently.
 
-### Inference servers (vLLM, SGLang, Triton, TGI)
+### Inference engines (vLLM, SGLang, Dynamo-Triton, TensorRT-LLM)
 
-Inference servers add a few framework-specific tunables on top of the same env var. The agent install side is identical; what differs is the workload pod / Docker launch.
+Inference engines use the same variables. The docs have a tested page per engine, each with Kubernetes, Docker, and binary instructions and a full manifest. **Fetch the engine's page and adapt its manifest** rather than writing one from scratch:
 
-The host path is fixed at `/var/lib/zymtrace/profiler`. The in-container path is your choice — common patterns:
-- Mount to the same path (`/var/lib/zymtrace/profiler` inside the container) and set `CUDA_INJECTION64_PATH=/var/lib/zymtrace/profiler/libzymtracecudaprofiler.so`.
-- Mount to `/opt/zymtrace/profiler` and set `CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so`.
+| Engine | NVIDIA | AMD | Docs | Full Kubernetes manifest |
+|---|---|---|---|---|
+| vLLM | ✓ | ✓ | <https://docs.zymtrace.com/install/profiler/profiling-inference-engines/vllm> | <https://gist.github.com/iogbole/0060415b87d6d8ecff8cdc4b5a3143e4> |
+| SGLang | ✓ | ✓ | <https://docs.zymtrace.com/install/profiler/profiling-inference-engines/sglang> | <https://gist.github.com/iogbole/16c39f0915cb4998a7a201c8c0864ba8> |
+| NVIDIA Dynamo-Triton | ✓ | — | <https://docs.zymtrace.com/install/profiler/profiling-inference-engines/dynamo-triton> | <https://gist.github.com/iogbole/2fda4ed7e53f70beb2df949d3eb320ef> |
+| TensorRT-LLM | ✓ | — | <https://docs.zymtrace.com/install/profiler/profiling-inference-engines/tensorrt-llm> | <https://gist.github.com/iogbole/2cba56573253f0f9e1caf86d1953929e> |
 
-Both work — pick one and stay consistent.
-
-#### Concrete Docker example — SGLang serving gpt-oss-20b with PC sampling
-
-```bash
-docker rm -f gpt-oss-zymtrace-sglang 2>/dev/null || true
-docker run --gpus all --privileged \
-    --shm-size 32g \
-    -v ~/.cache/huggingface:/root/.cache/huggingface \
-    -v /var/lib/zymtrace/profiler:/opt/zymtrace/profiler:ro \
-    --rm -d \
-    -e RUST_LOG="zymtracecudaprofiler=info" \
-    -e ZYMTRACE_CUDAPROFILER__PRINT_STATS="true" \
-    -e ZYMTRACE_CUDAPROFILER__QUIET="false" \
-    -e ZYMTRACE_CUDAPROFILER__ENABLE_PC_SAMPLING="true" \
-    -e CUDA_INJECTION64_PATH="/opt/zymtrace/profiler/libzymtracecudaprofiler.so" \
-    -p 30000:30000 \
-    --ipc=host \
-    --name gpt-oss-zymtrace-sglang \
-    lmsysorg/sglang:latest \
-    python3 -m sglang.launch_server --model-path openai/gpt-oss-20b --host 0.0.0.0 --port 30000 --enable-metrics
-```
-
-Notes for SGLang specifically:
-- `--shm-size 32g` — SGLang's runtime needs large `/dev/shm` for KV cache and IPC. Don't drop it.
-- `--ipc=host` plus `--shm-size` — same reason.
-- `--enable-metrics` on `sglang.launch_server` exposes the metrics endpoint zymtrace's `--enable-sglang-metrics` then scrapes.
-- `--privileged` + `ZYMTRACE_CUDAPROFILER__ENABLE_PC_SAMPLING=true` go together — see § PC sampling.
-
-#### Concrete Docker example — vLLM serving gpt-oss-20b on a MIG slice
-
-```bash
-docker rm -f vllm-gpt-oss 2>/dev/null || true
-docker run --gpus "device=MIG-f23532fd-1e7a-514e-90f7-4c940831a592" --privileged \
-    -v ~/.cache/huggingface:/root/.cache/huggingface \
-    -v /var/lib/zymtrace/profiler:/opt/zymtrace/profiler:ro \
-    --rm -d \
-    -e RUST_LOG="zymtracecudaprofiler=info" \
-    -e ZYMTRACE_CUDAPROFILER__PRINT_STATS="true" \
-    -e ZYMTRACE_CUDAPROFILER__QUIET="false" \
-    -e ZYMTRACE_CUDAPROFILER__ENABLE_PC_SAMPLING="true" \
-    -e CUDA_INJECTION64_PATH="/opt/zymtrace/profiler/libzymtracecudaprofiler.so" \
-    -e VLLM_ATTENTION_BACKEND="TRITON_ATTN_VLLM_V1" \
-    -p 8000:8000 \
-    --ipc=host \
-    --name vllm-gpt-oss \
-    vllm/vllm-openai:gptoss \
-    --model openai/gpt-oss-20b
-```
-
-Notes for vLLM specifically:
-- `--gpus "device=MIG-<UUID>"` — targets a **specific MIG slice** instead of a whole GPU. Get UUIDs with `nvidia-smi -L`. Use `--gpus all` for a full GPU.
-- `VLLM_ATTENTION_BACKEND="TRITON_ATTN_VLLM_V1"` — switches vLLM to Triton attention kernels. These give cleaner per-kernel profiling than FlashAttention (which obscures internals).
-- No `--shm-size` flag — vLLM uses `--ipc=host` directly without needing the size bump.
-- Port 8000 is the vLLM default (compare SGLang's 30000).
-
-#### Concrete Kubernetes example — vLLM DeepSeek-R1 on GKE
-
-Full manifest with profiler volume mount, env vars, and a sidecar load generator for demos:
-
-- <https://gist.github.com/iogbole/0060415b87d6d8ecff8cdc4b5a3143e4>
-
-The pod-spec pattern that applies to any container-based GPU workload:
+The pod-spec pattern every engine page uses (NVIDIA shown; for AMD swap the env var for the two ROCm ones above and the GPU resource for `amd.com/gpu`):
 
 ```yaml
 spec:
-  hostIPC: true                     # required for vLLM, SGLang, and most inference servers
+  hostIPC: true                     # engines use shared memory for IPC
   containers:
-  - name: workload
-    image: vllm/vllm-openai:latest
-    securityContext:
-      privileged: true              # required if PC sampling on; inference servers also benefit for shared memory
+  - name: engine
     env:
     - name: CUDA_INJECTION64_PATH
-      value: "/var/lib/zymtrace/profiler/libzymtracecudaprofiler.so"
-    # Optional tuning:
-    - name: RUST_LOG
-      value: "zymtracecudaprofiler=info"
-    - name: ZYMTRACE_CUDAPROFILER__PRINT_STATS
-      value: "true"
-    - name: ZYMTRACE_CUDAPROFILER__QUIET
-      value: "false"
+      value: /opt/zymtrace/profiler/libzymtracecudaprofiler.so
+    resources:
+      limits:
+        nvidia.com/gpu: 1
     volumeMounts:
     - name: zymtrace-profiler
-      mountPath: /var/lib/zymtrace/profiler
+      mountPath: /opt/zymtrace/profiler
       readOnly: true
   volumes:
   - name: zymtrace-profiler
@@ -399,7 +349,21 @@ spec:
       type: Directory
 ```
 
-Authoritative doc with more framework examples: <https://docs.zymtrace.com/install/profiler/cuda-gpu-profiler>.
+Docker equivalent: `-v /var/lib/zymtrace/profiler:/opt/zymtrace/profiler:ro -e CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so --ipc=host`. AMD Docker also needs `--device /dev/kfd --device /dev/dri --group-add video`.
+
+Engine-specific notes:
+
+- **vLLM** — exposes Prometheus metrics by default; zymtrace collects them. Port 8000. ROCm image: `vllm/vllm-openai-rocm`.
+- **SGLang** — only exposes metrics when started with **`--enable-metrics`** (SGLang's own flag, needed only if the user wants SGLang metrics in zymtrace). Port 30000.
+- **NVIDIA Dynamo-Triton** — NVIDIA only, container image only. Serves a model repository (`--model-repository`); the docs example uses the vLLM backend. Inference on port 8000, metrics on port 8002 (collected by default).
+- **TensorRT-LLM** — NVIDIA only. Docker needs NVIDIA's recommended `--ulimit memlock=-1 --ulimit stack=67108864`. zymtrace collects GPU profiles and GPU metrics; there are no TensorRT-LLM framework metrics.
+- **CUDA and HIP graphs** are supported out of the box; engines use them by default. Don't disable graphs (e.g. `--enforce-eager`) to make profiling work. On NVIDIA, graph launches are sampled (`ZYMTRACE_CUDAPROFILER__GRAPH_SAMPLING__*`, see the env var table).
+- **PC sampling** (NVIDIA only) is the only reason to add `privileged: true` / `--privileged` to an engine. See § PC sampling.
+- Kernels are profiled only while the engine is serving requests — send traffic before checking the flamegraph.
+
+**Verify** the library loaded by adding to the engine's environment:
+- NVIDIA: `RUST_LOG=zymtracecudaprofiler=info` + `ZYMTRACE_CUDAPROFILER__QUIET=false` → the engine log shows `loaded zymtrace CUDA profiler version ...`.
+- AMD: `RUST_LOG=zymtracerocmprofiler=info` + `ZYMTRACE_ROCMPROFILER__QUIET=false` → the engine log shows `zymtracerocmprofiler` lines.
 
 ---
 
@@ -414,9 +378,21 @@ The profiler agent automatically collects framework-specific metrics when the re
 | NVIDIA Dynamo-Triton | on | `--enable-triton-metrics=false` | `ZYMTRACE_ENABLE_TRITON_METRICS=false` |
 | AWS Neuron | on | `--enable-neuron-metrics=false` | `ZYMTRACE_ENABLE_NEURON_METRICS=false` |
 | Host metrics (CPU, mem, disk) | on | `--enable-host-metrics=false` | `ZYMTRACE_ENABLE_CPU_METRICS=false` |
-| GPU metrics | **off** by default — needs explicit `--enable-gpu-metrics` | `ZYMTRACE_ENABLE_GPU_METRICS=true` | |
+| GPU metrics (NVIDIA) | on | `--enable-gpu-metrics=false` | `ZYMTRACE_ENABLE_GPU_METRICS=false` |
 
-Disable framework metrics only if you don't want them in the UI; the overhead is negligible.
+TensorRT-LLM has no framework metrics; zymtrace collects its GPU profiles and GPU metrics. Disable metrics only if you don't want them in the UI; the overhead is negligible. Every metric and dashboard: <https://docs.zymtrace.com/gpu/metrics-reference>.
+
+---
+
+## Off-CPU profiling
+
+Off by default. Off-CPU profiles show where threads **wait** (locks, I/O, sleeps, waiting for a CPU) rather than where they run — the view to use when a service is slow but its CPU usage is low. It's a **host-wide** setting: rules can target hosts, not individual processes.
+
+Enable it either way:
+- **UI (no redeploy):** **Settings → Agent Config → Off-CPU → Add Rule**, a host CEL expression (or empty for all hosts), turn on **Off-CPU profiling**. Applies without restarting the profiler.
+- **Profiler flag:** add `--enable-off-cpu` to `profiler.args` (env `ZYMTRACE_ENABLE_OFF_CPU=true`). `--off-cpu-sampling-rate=<Hz>` (default 19) also enables it when non-zero.
+
+Docs: <https://docs.zymtrace.com/features/off-cpu-profiling>
 
 ---
 
@@ -436,6 +412,8 @@ The CUDA profiler library reads these env vars from the **profiled workload** (n
 | `ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__ENABLED` | Sample kernels vs profile all. Default: true. |
 | `ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__TARGET` | Kernels per thread per window. Default: 200. |
 | `ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__WINDOW_SIZE` | Sampling window. Default: 1s. |
+| `ZYMTRACE_CUDAPROFILER__GRAPH_SAMPLING__ENABLED` | Sample CUDA graph launches rather than profiling every launch; a sampled launch profiles every kernel in the graph. Default: true. |
+| `ZYMTRACE_CUDAPROFILER__GRAPH_SAMPLING__TARGET` | Graph launches to profile, per OS thread, per second. Default: 20. |
 
 Full reference: <https://docs.zymtrace.com/profiler-gpu-variables>
 
@@ -534,7 +512,9 @@ Full env-var reference: <https://docs.zymtrace.com/profiler-configuration>
 - Live `values.yaml`: <https://raw.githubusercontent.com/zystem-io/zymtrace-charts/main/charts/profiler/values.yaml>
 - Install doc: <https://docs.zymtrace.com/install/profiler/install-profiler>
 - GPU quick-start: <https://docs.zymtrace.com/install/profiler/gpu-profiler-quick-start>
-- CUDA workload setup: <https://docs.zymtrace.com/install/profiler/cuda-gpu-profiler>
+- GPU workload setup (automatic + manual injection, ROCm): <https://docs.zymtrace.com/install/profiler/profiling-gpu-workloads>
+- Inference engines (vLLM, SGLang, Dynamo-Triton, TensorRT-LLM): <https://docs.zymtrace.com/install/profiler/profiling-inference-engines>
+- Off-CPU profiling: <https://docs.zymtrace.com/features/off-cpu-profiling>
 - Resource guide: <https://docs.zymtrace.com/install/profiler/profiler-resource-guide>
 - CLI args + env: <https://docs.zymtrace.com/profiler-configuration>
 - GPU env vars: <https://docs.zymtrace.com/profiler-gpu-variables>

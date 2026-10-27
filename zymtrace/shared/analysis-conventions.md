@@ -38,6 +38,16 @@ All metrics and flamegraphs come from the user's live zymtrace instance:
 
 This tool preference is for the **call-tree / flamegraph** step only. For **ranking** ("which entity/function is hottest"), still use the concise **`topentities`** / **`topfunctions`** tools — `hot_traces` returns full trace data, more than you need to rank. Rank with `top*`, then pull the hot entry's call tree with `hot_traces`.
 
+**Check existing recommendations early.** zymtrace continuously generates AI recommendations — evidence-backed reports, **one per application** (a set of executables and the hosts or Kubernetes workloads running them), for on-CPU and CUDA profiles. When the MCP exposes a **`recommendations`** tool, call it right after resolving the scope, before profiling — the cause may already be diagnosed:
+
+- **Pass `event_kind` and an explicit `range`.** `event_kind` is required (`on_cpu`, `cuda`, …). **Omitting `range` (or passing `null`) means the last hour** — which usually returns nothing, because a recommendation is generated once, when a problem is first seen. Default to **all time**: `start_ts: 946684800000` (2000-01-01, the earliest the tool accepts) to now. Use a shorter range only when the user asks about a specific period.
+- **Apply the user's filters.** Pass the same `expr` you resolved for the scope (`Deployment`, `Container`, `K8sNs`, `Exe`, `Script`, `Host`, …) so you only get recommendations for that workload. When the user wants their own code, add `trace_tag_display: "ExcludeThirdParty"` to drop recommendations about third-party code (kubelet, containerd, runtimes) — on the demo that cut on-CPU results from 145 to 111.
+- **Read every page.** Results are ordered by descending *application cost*, not by the value of the fix, and the default page is small. Request a larger `page_size` (e.g. 20) and follow `next_page` until it's null, comparing against `item_count`. A high-value fix in a cheaper application sits on a later page; stopping at page 1 is how it gets missed.
+- **`PrefixHash` is a lookup, not an enumeration.** `expr = {Leaf: {field: "PrefixHash", value: {Eq: "<prefix_hash>"}}}` returns the recommendation(s) whose application contains that `hot_traces` trace — use it to tie a trace you're already drilling into to its recommendation. Don't enumerate recommendations by querying each hot trace's hash: many hot traces have no recommendation, several traces map to the same one, and you'll cover far fewer than paging the scope does.
+- **Treat a hit as a lead, not an answer.** Verify it against your own `hot_traces` / metrics before repeating it, and say in the recap that it came from an existing recommendation. No hit → proceed normally.
+
+Docs: <https://docs.zymtrace.com/features/recommendations>
+
 Two hard prohibitions:
 
 - **Never** substitute local profile files (`.pftrace`, `profile_*.json`) — they aren't tied to the user's instance/filter and mislead.
@@ -60,9 +70,10 @@ or Cursor, the equivalent MCP listing):
 
 Pick the view from the request; **never ask the user "is this CPU or GPU?"** — infer it.
 
-- **GPU signal present** — the request mentions GPU, CUDA, an accelerator, inference, an inference server (vLLM, SGLang, Triton, TensorRT-LLM), or a training/fine-tuning job → use the **GPU** workflow ([`optimize-gpu-workloads`](../skills/optimize-gpu-workloads/SKILL.md)); it cross-checks CPU anyway.
+- **GPU signal present** — the request mentions GPU, CUDA, ROCm, an accelerator, inference, an inference server (vLLM, SGLang, Triton, TensorRT-LLM), or a training/fine-tuning job → use the **GPU** workflow ([`optimize-gpu-workloads`](../skills/optimize-gpu-workloads/SKILL.md)); it cross-checks CPU anyway.
 - **No accelerator signal — only an entity named** (a container, deployment, pod, host, process, or just "what's slow / what's hot") → default to the **CPU** workflow ([`optimize-cpu-workloads`](../skills/optimize-cpu-workloads/SKILL.md)). **CPU is the universal baseline:** every profiled entity has a CPU profile; GPU is the special case.
 - **Memory-allocation / GC signal on a Java service** — "what's allocating", "why is GC busy", "reduce heap churn", "JVM memory allocations" → use the **memory-allocation** workflow ([`optimize-memory-allocation`](../skills/optimize-memory-allocation/SKILL.md)), which reads the JVM allocation profile (bytes allocated). **JVM-only** — non-Java workloads have no allocation profile. The CPU workflow also hands off here when a Java service's hot pattern turns out to be allocator/GC frames.
+- **Slow but not CPU-bound** — "slow but CPU is low", "where is it waiting / blocked", latency without a CPU hot spot → stay in the **CPU** workflow and read the **off-CPU** profile (MCP event kind `off_cpu`), per [`optimize-cpu-workloads` § Slow but not CPU-bound](../skills/optimize-cpu-workloads/SKILL.md#slow-but-not-cpu-bound-read-the-off-cpu-profile). Off-CPU time is a different event kind from on-CPU time — never add or compare them.
 
 Then **let the metrics decide.** You pull the entity's metrics first regardless (next steps). If an entity you reached via the CPU default turns out to show real GPU activity (non-trivial GPU utilization / memory), it's a GPU workload — switch to the GPU workflow for the cross-view rather than analyzing GPU work from the CPU side alone.
 
@@ -177,5 +188,3 @@ defines how to render it. Everything else below is common.
 
 - **Always** ground the recommendation in the data the MCP returned (frame/kernel names, percentages, hot stacks). Synthesize across views — but don't fabricate signals the data doesn't show.
 - **Never** analyze local profile files (`.pftrace`, `profile_*.json`) as a substitute for the MCP, and **never** query ClickHouse / the backend DB directly — see the data-source policy above.
-</content>
-</invoke>

@@ -2,6 +2,8 @@
 
 When a skill needs source-of-truth content (docs, chart values, compose files), look it up here. Use `WebFetch` to read.
 
+**Can't find the right page?** The docs publish an index for agents: <https://docs.zymtrace.com/llms.txt> (every page with a one-line summary). <https://docs.zymtrace.com/llms-full.txt> has the full text of every page.
+
 ## zymtrace Backend (Helm chart + Docker Compose)
 
 ### Helm chart — [`zystem-io/zymtrace-charts`](https://github.com/zystem-io/zymtrace-charts/tree/main/charts)
@@ -41,6 +43,25 @@ When a skill needs source-of-truth content (docs, chart values, compose files), 
 | Topic | URL |
 |-------|-----|
 | JVM memory allocation profiling (enable + config) | https://docs.zymtrace.com/allocation-profiling |
+| Off-CPU profiling (enable + read) | https://docs.zymtrace.com/features/off-cpu-profiling |
+| GPU workloads (CUDA injection, automatic injection via the UI, ROCm) | https://docs.zymtrace.com/install/profiler/profiling-gpu-workloads |
+| GPU profiler env vars (CUDA and ROCm) | https://docs.zymtrace.com/install/profiler/profiler-gpu-variables |
+| Inference engines overview (CUDA/HIP graphs, PC sampling, verification) | https://docs.zymtrace.com/install/profiler/profiling-inference-engines |
+| vLLM (NVIDIA + AMD) | https://docs.zymtrace.com/install/profiler/profiling-inference-engines/vllm |
+| SGLang (NVIDIA + AMD) | https://docs.zymtrace.com/install/profiler/profiling-inference-engines/sglang |
+| NVIDIA Dynamo-Triton | https://docs.zymtrace.com/install/profiler/profiling-inference-engines/dynamo-triton |
+| TensorRT-LLM | https://docs.zymtrace.com/install/profiler/profiling-inference-engines/tensorrt-llm |
+| Inference server metrics | https://docs.zymtrace.com/gpu/inference-server-metrics |
+| AMD GPU metrics & profiles | https://docs.zymtrace.com/gpu/amd/gpu-metrics |
+| Metrics reference (every metric + dashboard) | https://docs.zymtrace.com/gpu/metrics-reference |
+
+### Analysis features in the UI (`docs.zymtrace.com`)
+| Topic | URL |
+|-------|-----|
+| Recommendations (AI-generated reports, settings) | https://docs.zymtrace.com/features/recommendations |
+| K8s Resource IQ (Kubernetes request/limit right-sizing) | https://docs.zymtrace.com/features/right-sizing |
+| GPU Topology (NVLink, ECC/XID, NUMA placement) | https://docs.zymtrace.com/features/gpu-topology |
+| AI Assistant (in-app) | https://docs.zymtrace.com/ai-assistant/using-ai-assistant |
 
 ### Public images & artifacts
 - Backend services: `ghcr.io/zystem-io/zymtrace-pub-backend:<VERSION>` (also `docker.io/zystemio/zymtrace-pub-backend`)

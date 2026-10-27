@@ -1,8 +1,8 @@
 ---
 name: optimize-cpu-workloads
 description: |
-  Analyze CPU performance with zymtrace on CPU-only deployments (no GPUs) — rank the top CPU consumers (which process/function/container/host/pod is hottest), find what's eating CPU, pick the biggest-ROI app to optimize, or read a CPU flamegraph. The zymtrace MCP pulls the data (rankings, host metrics, flamegraphs); YOU analyze — name the hot stacks, identify the pattern (lock contention, allocation churn, serialization, GC, syscall-heavy), then recommend AND apply the fix in the user's source (ask for the path if it isn't local) and close with a follow-up. Scope to code the user controls (kube-proxy, k3s, systemd are context, not action items). Also for "investigate/troubleshoot/diagnose/look into" CPU or host performance. **DEFAULT when the user names only an entity with no accelerator hint** ("investigate my `payments` deployment", "what's going on with this container/pod/host", "why is this service slow") — CPU is the universal baseline (every workload has a CPU profile; GPU is the special case); pull metrics first and hand off to optimize-gpu-workloads if they show real GPU activity. Anything mentioning GPU, CUDA, an accelerator, inference, vLLM, SGLang, or Triton goes to optimize-gpu-workloads instead.
-  Trigger phrases: "use zymtrace to analyze CPU profiles", "investigate/troubleshoot/diagnose my CPU usage", "investigate my deployment/container/pod/host/service", "what's going on with <service>", "why is this service slow", "what's eating my CPU", "which process/function uses the most CPU core", "find the most expensive functions/containers/app/service", "rank my apps by CPU", "biggest ROI optimization", "what should I optimize first", "where's the CPU bottleneck", "why is this service CPU-bound", "analyze the CPU flamegraph", "top CPU consumers".
+  Analyze CPU performance with zymtrace on CPU-only deployments (no GPUs) — rank the top CPU consumers (which process/function/container/host/pod is hottest), find what's eating CPU, pick the biggest-ROI app to optimize, or read a CPU flamegraph. The zymtrace MCP pulls the data (rankings, host metrics, flamegraphs); YOU analyze — name the hot stacks, identify the pattern (lock contention, allocation churn, serialization, GC, syscall-heavy), then recommend AND apply the fix in the user's source (ask for the path if it isn't local) and close with a follow-up. Scope to code the user controls (kube-proxy, k3s, systemd are context, not action items). Also for "investigate/troubleshoot/diagnose/look into" CPU or host performance, and for services that are slow but not CPU-bound — read the off-CPU (waiting) profile. **DEFAULT when the user names only an entity with no accelerator hint** ("investigate my `payments` deployment", "what's going on with this container/pod/host", "why is this service slow") — CPU is the universal baseline (every workload has a CPU profile; GPU is the special case); pull metrics first and hand off to optimize-gpu-workloads if they show real GPU activity. Anything mentioning GPU, CUDA, ROCm, an accelerator, inference, vLLM, SGLang, Triton, or TensorRT-LLM goes to optimize-gpu-workloads instead.
+  Trigger phrases: "use zymtrace to analyze CPU profiles", "investigate/troubleshoot/diagnose my CPU usage", "investigate my deployment/container/pod/host/service", "what's going on with <service>", "why is this service slow", "slow but CPU is low", "where is my service waiting/blocked", "analyze the off-CPU profile", "what's eating my CPU", "which process/function uses the most CPU core", "find the most expensive functions/containers/app/service", "rank my apps by CPU", "biggest ROI optimization", "what should I optimize first", "where's the CPU bottleneck", "why is this service CPU-bound", "analyze the CPU flamegraph", "top CPU consumers".
 ---
 
 # Optimize CPU Workloads
@@ -29,7 +29,7 @@ The MCP pulls the data; you do the analysis. Establish a data path first (pre-fl
 
 1. **Rank first if the request is rank-shaped** ("what's eating my CPU", "which process", "biggest ROI") — use **topentities** / **topfunctions** (concise rankings), then drill into the top entry with `hot_traces`. **Rank by cores consumed** (CPU-cores, i.e. the absolute on-CPU time the entity holds — not just % of one core), so the ranking reflects real machine cost. Present it as a **table** (see [Ranking table](#ranking-table-rank-first-output)) — one row per consumer with cores over the window, **annualized core-hours** (`cores × 8,760`), and **annualized cost** only; host / container / deployment go in a reference line below the table, not as columns. Then pick the top entry. Mark third-party / unmodifiable system processes (kube-proxy, kubelet, systemd, the kernel) with **❌** and drill into the highest user-owned entry. See scope-to-own-code/ROI in the shared doc.
 
-2. **Pull the entity's CPU metrics first, for context.** CPU utilization (and run-queue / throttling if available) — to establish how hot the workload actually runs and whether it's CPU-bound or stalled (waiting on locks, I/O, syscalls). Carry these numbers into the recap.
+2. **Pull the entity's CPU metrics first, for context.** CPU utilization (and run-queue / throttling if available) — to establish how hot the workload actually runs and whether it's CPU-bound or stalled (waiting on locks, I/O, syscalls). Carry these numbers into the recap. **Low CPU but the user says it's slow?** The time is spent waiting, not running — go to [Slow but not CPU-bound](#slow-but-not-cpu-bound-read-the-off-cpu-profile).
 
    **Escalation check (when you arrived here by the entity-only default).** If the metrics show **real GPU activity** (non-trivial GPU utilization / memory), this is a GPU workload, not a CPU-only one — stop and hand off to [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md) for the GPU↔CPU cross-view. Don't analyze a GPU workload from the CPU side alone. (Skip this when the user explicitly asked a CPU question, or the deployment has no GPUs.)
 
@@ -78,6 +78,19 @@ Lead a rank-first recap with a table — one row per top consumer, hottest first
 
 When the CPU pattern is **allocation churn / GC** (step 4) — allocator and GC frames dominating on-CPU time — the on-CPU view can't name *which* call sites allocate. **On a Java service**, hand off to [`optimize-memory-allocation`](../optimize-memory-allocation/SKILL.md) (the JVM allocation profile, weighted by bytes) to turn "GC is hot" into a named, fixable allocation site. (Non-Java workloads have no allocation profile — stay here.)
 
+## Slow but not CPU-bound? Read the off-CPU profile
+
+On-CPU profiles only show time spent running. When a service is slow but its CPU usage is low, or the on-CPU view is dominated by `futex` / `epoll_wait` / scheduler frames, the time is spent **waiting** — pull the **off-CPU** profile (MCP event kind `off_cpu`) with the same filter and time range.
+
+- **Frame widths are blocked time**, not CPU time. Never add or compare on-CPU and off-CPU costs — they're different event kinds with different units.
+- **Read the leaf frames for what the threads wait on:** `futex` → a lock or condition variable; `epoll_wait` / `poll` → network or file I/O; `nanosleep` → an explicit sleep. Follow the stack up to the user's code that waits.
+- **`Scheduler latency` frames** at the bottom of a stack are the time between a thread being woken and actually running — waiting for a CPU. A large share means CPU contention on the host (too many runnable threads, CPU limits), not slow I/O or locks.
+- **No off-CPU data?** Off-CPU profiling is **off by default** and is a **host-wide** setting — an empty result means it isn't enabled, not that nothing waits. Ask the user before enabling it: a rule under **Settings → Agent Config → Off-CPU** in the UI (no redeploy; target hosts with a CEL expression) or the `--enable-off-cpu` profiler flag. Then wait for data before analyzing. Docs: <https://docs.zymtrace.com/features/off-cpu-profiling>
+
+## Kubernetes requests far from usage? Point to K8s Resource IQ
+
+When the hot (or idle) entity is a Kubernetes workload whose CPU use is far below or above what its pod requests, the fix may be its requests and limits rather than its code. Point the user to **K8s Resource IQ** in the zymtrace UI (labelled **K8s Capacity IQ** in the sidebar): it compares requests and limits with observed usage per container and gives a ready-to-paste `resources` block. A CPU-throttled container gets a *higher* CPU limit there. Docs: <https://docs.zymtrace.com/features/right-sizing>
+
 ## CPU call-tree rendering (Observed Call Tree section)
 
 The output-template skeleton is in the shared doc. The CPU **Observed Call Tree** block renders like this:
@@ -106,6 +119,7 @@ The output-template skeleton is in the shared doc. The CPU **Observed Call Tree*
 - [ ] CPU metrics pulled first (utilization, and throttling/run-queue if available) and carried into the recap.
 - [ ] CPU flamegraph pulled at the named scope; the dominant pattern named (lock contention, allocation/GC, serialization, syscall-bound, hot loop).
 - [ ] Allocation profile pulled for the same filter **if** the pattern looked allocation/GC-bound.
+- [ ] If the service was slow but not CPU-bound: the off-CPU profile pulled for the same filter (or, if empty, off-CPU profiling offered and enabled only on the user's yes), and the waiting cause named from its leaf frames.
 
 (Plus the common Done checklist in the shared doc — template, every 🔴/🟡 has a `Fix:`, fix applied, follow-up question.)
 
@@ -121,4 +135,3 @@ The output-template skeleton is in the shared doc. The CPU **Observed Call Tree*
 
 - Common rules (ground in returned data, never analyze local profile files, never query the DB directly) are in [`shared/analysis-conventions.md`](../../shared/analysis-conventions.md).
 - **Always** ground the recommendation in the data the MCP returned (frame names, percentages, hot stacks) — don't fabricate signals the data doesn't show.
-</content>
