@@ -35,7 +35,7 @@ When a skill needs source-of-truth content (docs, chart values, compose files), 
 | ClickHouse | https://docs.zymtrace.com/databases/clickhouse |
 | Postgres | https://docs.zymtrace.com/databases/postgres |
 | Object storage | https://docs.zymtrace.com/databases/object-storage |
-| Authentication | https://docs.zymtrace.com/authentication |
+| Authentication | https://docs.zymtrace.com/authentication/overview |
 
 ### Profiler & profiling features (`docs.zymtrace.com`)
 | Topic | URL |
