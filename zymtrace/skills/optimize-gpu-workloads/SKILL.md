@@ -60,7 +60,11 @@ The protocol is the same — GPU view, then the CPU view with the same filter �
 
 ## Rule out the hardware path
 
-When the GPU looks underused, collectives (NCCL all-reduce, all-gather) are slow, or host↔device copies are slower than they should be — and neither the GPU nor the CPU view shows a code-level cause — the bottleneck may be the machine, not the code. Ask the user to open **GPU Topology** in the zymtrace UI for the host (it isn't exposed through the MCP) and check:
+When the GPU looks underused, collectives (NCCL all-reduce, all-gather) are slow, or host↔device copies are slower than they should be — and neither the GPU nor the CPU view shows a code-level cause — the bottleneck may be the machine, not the code.
+
+**First, pull what the MCP has** (`discover_metrics` → `metrics`, same host/GPU filter): NVLink bandwidth in total and per link (`hw.gpu.nvlink.rx/tx`, `hw.gpu.nvlink.per_link.rx/tx`), negotiated speed per link (`hw.gpu.nvlink.per_link.speed` — one link slower than its peers is a degradation signal), PCI errors (`hw.gpu.err.pci.count`), and row remapping (`hw.gpu.err.remapped.pending` / `.failure`). Not every host reports them.
+
+**Then ask the user to open GPU Topology** in the zymtrace UI for the host — the interconnect matrix, NUMA placement, and error counters aren't exposed through the MCP — and check:
 
 - **Interconnect Matrix**: degraded NVLink pairs (marked, with CRC/replay/recovery error rates), or a pair falling back to a PCIe path (`SYS`, `NODE`, `PHB`). One GPU's whole row and column degraded points to that GPU's port, cable, or switch path.
 - **Recommendations** panel: processes running on CPUs that aren't on their GPU's NUMA node, with the `numactl` command that fixes it.
