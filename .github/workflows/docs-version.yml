@@ -1,0 +1,85 @@
+name: Sync version from docs
+
+# zymtrace-docs sends a `docs-version` repository_dispatch whenever its VERSION file changes on
+# main (.github/workflows/notify-skills.yml in zymtrace-docs). This workflow sets VERSION to the
+# docs version, propagates it with scripts/sync-version.sh, runs the structural tests, and commits
+# the result to main.
+#
+# Pushes made with GITHUB_TOKEN don't trigger other workflows, so the propagation and tests that
+# sync-version.yml and structural.yml would run happen here instead.
+
+on:
+  repository_dispatch:
+    types: [docs-version]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "zymtrace version to set (X.Y.Z)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve target version
+        id: target
+        env:
+          REQUESTED: ${{ github.event.client_payload.version || inputs.version }}
+        run: |
+          version="$(printf '%s' "$REQUESTED" | tr -d '[:space:]')"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$version' is not X.Y.Z."
+            exit 1
+          fi
+          current="$(tr -d '[:space:]' < VERSION)"
+          if [[ "$version" == "$current" ]]; then
+            echo "VERSION is already $version. Nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          newest="$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -n 1)"
+          if [[ "$newest" != "$version" ]]; then
+            echo "::error::Refusing to downgrade VERSION from $current to $version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Propagate version to manifests
+        if: steps.target.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
+        run: bash scripts/sync-version.sh "$VERSION"
+
+      - uses: actions/setup-python@v5
+        if: steps.target.outputs.changed == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Run structural tests
+        if: steps.target.outputs.changed == 'true'
+        run: |
+          make install
+          make test
+
+      - name: Commit and push
+        if: steps.target.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "bump to ${VERSION}"
+          git pull --rebase origin main
+          git push origin HEAD:main
