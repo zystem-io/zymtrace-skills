@@ -1,8 +1,8 @@
 ---
 name: install-zymtrace-profiler
 description: |
-  Use when installing the zymtrace profiler agent on Kubernetes (Helm DaemonSet), Docker, or as a binary with systemd. Covers CPU-only profiling, CUDA GPU profiling (CUDA 12.x or higher required; CUDA 11.x and below not supported), GPU metrics (utilization, memory, temperature, SM efficiency, Tensor Core, PCIe), framework-specific metrics (vLLM, SGLang, NVIDIA Dynamo-Triton), and air-gapped installs via a custom image registry. Connects the agent to an existing backend gateway.
-  Trigger phrases: "install profiler", "install zymtrace profiler", "install zymtrace agent", "deploy the profiler", "deploy zymtrace DaemonSet", "set up GPU profiling", "set up CUDA profiling", "profile my GPU workloads", "install profiler on EKS / GKE / Slurm / bare-metal", "install profiler on every node", "start collecting profiles".
+  Use when installing the zymtrace profiler agent on Kubernetes (Helm DaemonSet), Docker, or as a binary with systemd, and wiring workloads up to it. Covers CPU-only profiling, off-CPU profiling, NVIDIA GPU profiling (CUDA 12.x+; automatic injection from the UI or CUDA_INJECTION64_PATH), AMD GPU profiling (ROCm 7.x+), inference engines (vLLM, SGLang, NVIDIA Dynamo-Triton, TensorRT-LLM), GPU and inference server metrics, and air-gapped installs via a custom registry. Connects the agent to an existing backend gateway.
+  Trigger phrases: "install profiler", "install zymtrace profiler", "install zymtrace agent", "deploy the profiler", "deploy zymtrace DaemonSet", "set up GPU profiling", "set up CUDA profiling", "set up ROCm / AMD GPU profiling", "profile my GPU workloads", "profile vLLM / SGLang / Triton / TensorRT-LLM", "enable off-CPU profiling", "install profiler on EKS / GKE / Slurm / bare-metal", "install profiler on every node", "start collecting profiles".
 ---
 
 # Install zymtrace Profiler
@@ -62,25 +62,28 @@ If `helm`/`kubectl` are missing → point to install docs; do **not** install th
 |---|---|
 | Backend release & its namespace | `helm list -A \| grep -i 'backend.*zymtrace'` |
 | Backend gateway service FQDN | `<PREFIX>-gateway.<backend-NS>.svc.cluster.local:80` (in-cluster) or external ingress host |
-| GPU nodes present? | `kubectl get nodes -l nvidia.com/gpu=true 2>/dev/null \| wc -l` |
+| NVIDIA GPU nodes present? | `kubectl get nodes -l nvidia.com/gpu=true 2>/dev/null \| wc -l` |
+| AMD GPU nodes present? | `kubectl get nodes -o custom-columns='NAME:.metadata.name,AMD_GPU:.status.capacity.amd\.com/gpu' \| grep -v '<none>'` |
 | NVIDIA device plugin / GPU operator? | `kubectl get pods -A \| grep -E 'nvidia-device-plugin\|gpu-operator'` |
 | **CUDA runtime ≥ 12.x?** (required for GPU profiling) | `kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.labels.nvidia\.com/cuda\.runtime-version\.major}{"\n"}{end}' \| sort -u` — must be `12` or higher. If labels are missing, `kubectl exec` into an existing GPU pod and run `nvidia-smi`, or ask the user to run `nvidia-smi` on a GPU node themselves and report back (the skill usually can't SSH into the node). |
 | Existing profiler release? | `helm list -A \| grep -i 'profiler.*zymtrace'` |
 | Customer-provided values file? | Ask — same rule as backend skills. Filename respected. |
 
 Things you **must** ask:
-- CPU-only or GPU (CUDA) profiling?
+- CPU-only or GPU profiling, and if GPU, NVIDIA (CUDA) or AMD (ROCm)?
 - Backend gateway endpoint (in-cluster vs external).
 
 ## Blockers vs recommendations (don't conflate)
 
 **Blockers** (stop, surface):
 - Backend gateway endpoint unreachable from where the agent will run.
-- **GPU profiling requested with CUDA < 12.x** — unsupported; offer CPU-only profiling instead or have the user upgrade CUDA first.
+- **NVIDIA GPU profiling requested with CUDA < 12.x** — unsupported; offer CPU-only profiling instead or have the user upgrade CUDA first.
+- **AMD GPU profiling requested on ROCm < 7.x or a non-x86_64 host** — unsupported; offer CPU-only profiling.
 
 **Recommendations** (note, proceed):
 - **NVIDIA driver / device plugin missing** on GPU nodes — CPU profiling still works, GPU profiling won't until the driver is installed.
 - **PC sampling** disabled (default) — useful for production; explicitly enabled only when the user asks (requires CAP_SYS_ADMIN, see [reference.md § PC sampling](reference.md#pc-sampling)).
+- **Off-CPU profiling** disabled (default) — offer it when the user cares about latency or waiting (locks, I/O). Host-wide; enable with `--enable-off-cpu` or a rule in the UI. See [reference.md § Off-CPU profiling](reference.md#off-cpu-profiling).
 
 ## Decision tree
 
@@ -98,11 +101,11 @@ Things you **must** ask:
 | Profiling | Template | What it gives you |
 |-----------|----------|-------------------|
 | **CPU only** | [`values/helm-cpu.yaml`](values/helm-cpu.yaml) | eBPF unwinder for native, Python, Go, Java, Node. No CUDA libraries. |
-| **GPU (CUDA)** | [`values/helm-gpu.yaml`](values/helm-gpu.yaml) | Above + CUDA kernel profiling + GPU metrics + vLLM/SGLang/Triton metrics. Same template works for MIG slices and dense multi-GPU nodes. |
+| **GPU (NVIDIA or AMD)** | [`values/helm-gpu.yaml`](values/helm-gpu.yaml) | Above + GPU kernel profiling (CUDA or ROCm) + GPU metrics + vLLM/SGLang/Dynamo-Triton metrics. Same template works for MIG slices and dense multi-GPU nodes; for AMD nodes, change its `nodeSelector`. |
 
-> **GPU profiling requires CUDA 12.x or higher.** Older CUDA runtimes are not supported. If the customer's nodes are on CUDA 11.x, GPU profiling is a blocker — recommend CPU-only profiling until they upgrade the CUDA toolkit / driver. Architecture: AMD64/x86_64 and ARM64 are both supported.
+> **NVIDIA GPU profiling requires CUDA 12.x or higher; AMD requires ROCm 7.x or higher on x86_64.** If the customer's NVIDIA nodes are on CUDA 11.x, GPU profiling is a blocker — recommend CPU-only profiling until they upgrade the CUDA toolkit / driver. Architecture: AMD64/x86_64 and ARM64 are both supported.
 
-If GPU nodes exist on the cluster (`nvidia.com/gpu=true` label) **and** CUDA ≥ 12.x, default-recommend GPU profiling. The agent works on CPU nodes too — `cudaProfiler.enabled: true` is a no-op when there's no NVIDIA driver.
+If GPU nodes exist on the cluster **and** the CUDA / ROCm version is supported, default-recommend GPU profiling. The agent works on CPU nodes too — `cudaProfiler.enabled: true` (which extracts both the CUDA and ROCm libraries) is a no-op when there's no GPU driver.
 
 ### 3. Backend gateway endpoint
 
@@ -196,14 +199,18 @@ Recommend the customer commit the file: `git add <values-file> && git commit -m 
 
 ### Step 7: Hand off to GPU workload setup (GPU installs only)
 
-If GPU profiling was enabled, the agent is running but **no workload is being profiled yet** — workloads need to set `CUDA_INJECTION64_PATH`. The pattern is one env var; the variation is *where* you set it (Slurm prolog, k8s pod spec, Docker `-e`, `~/.bashrc`).
+If GPU profiling was enabled, the agent is running but **no workload is being profiled yet** — the GPU profiler library has to be loaded into each workload process. Pick one:
+
+- **NVIDIA, automatic (recommended):** in the zymtrace UI, **Settings → Agent Config → CUDA Profiler → Add Rule**, target the workload with a process query, and turn on **Inject CUDA Profiler**. No manifest changes, no restarts. Doesn't capture NVTX.
+- **NVIDIA, manual:** set `CUDA_INJECTION64_PATH` on the workload.
+- **AMD:** set `ROCP_TOOL_LIBRARIES` and `ROCPROFILER_REGISTER_LIBRARY` on the workload and restart it. AMD has no automatic injection.
 
 Point the user at [`reference.md § Profiling real workloads`](reference.md#profiling-real-workloads-training-and-inference) — it covers:
 
 - **Training jobs** (PyTorch / DDP / FSDP / DeepSpeed / Megatron) — set-and-forget env var, with bare-metal/Slurm and Kubernetes examples.
-- **Inference servers** (vLLM / SGLang / Triton / TGI) — same env var plus framework-specific tunables (`hostIPC`, `--shm-size`, `VLLM_ATTENTION_BACKEND`), with concrete Docker and Kubernetes manifests.
+- **Inference engines** (vLLM, SGLang, NVIDIA Dynamo-Triton, TensorRT-LLM) — a table linking each engine's docs page and full manifest, the pod-spec pattern, engine-specific notes, and how to verify the library loaded.
 
-Authoritative docs: <https://docs.zymtrace.com/install/profiler/cuda-gpu-profiler> and <https://docs.zymtrace.com/install/profiler/gpu-profiler-quick-start>.
+Authoritative docs: <https://docs.zymtrace.com/install/profiler/profiling-gpu-workloads> and <https://docs.zymtrace.com/install/profiler/profiling-inference-engines>.
 
 CPU-only installs are done at this point — profiles for every process on every node start flowing within ~30 seconds.
 
@@ -223,7 +230,7 @@ Exit when ALL of the following are true (substitute `<NS>` / `<REL>` / `<PREFIX>
 - [ ] DaemonSet `<PREFIX>-profiler` has `DESIRED == READY` (`kubectl get ds -n <NS>`).
 - [ ] At least one pod has logged `Your license is valid until …` OR `streaming connection established` (means the agent reached the backend).
 - [ ] No `connection refused`, `dns lookup failed`, or `forbidden` in the last 50 log lines of any pod.
-- [ ] For GPU installs: `ls -la /var/lib/zymtrace/profiler` on a GPU node shows `libzymtracecudaprofiler.so` (the agent extracted it for workload mounts).
+- [ ] For GPU installs: `ls -la /var/lib/zymtrace/profiler` on a GPU node shows `libzymtracecudaprofiler.so` (NVIDIA) or `libzymtracerocmprofiler.so` (AMD) — the agent extracted it for workload mounts.
 
 If any box fails, route by symptom:
 - **Agent-side issues** (CrashLoopBackOff, ImagePullBackOff, OOMKilled, no GPU profiles, NVML, license rejected) → hand off to [`troubleshoot-zymtrace-profiler`](../troubleshoot-zymtrace-profiler/SKILL.md).
@@ -240,6 +247,8 @@ Both have first-pass diagnostic scripts to run before going manual.
 - **GPU template applied on CPU-only nodes** → harmless (CUDA profiler no-ops without NVIDIA driver), but wastes pod resources via the nodeSelector mismatch. Either remove `nodeSelector` or scope to GPU nodes.
 - **NodeSelector targets a label the cluster doesn't actually set** → DaemonSet schedules 0 pods. `kubectl get nodes --show-labels` to confirm.
 - **`--nvml-auto-scan` left on permanently** → fine for first install (detects NVML path), but for production, switch to `--nvml-path=<path>` once the path is known (saves startup scan).
+- **Disabling CUDA graphs (`--enforce-eager`) or adding `privileged: true` "to make profiling work"** on an inference engine → neither is needed. CUDA and HIP graphs are supported; `privileged` is only for PC sampling.
+- **Checking the GPU flamegraph before the engine serves any requests** → kernels are profiled only while the GPU is working. Send traffic first.
 
 ---
 
@@ -249,5 +258,6 @@ Both have first-pass diagnostic scripts to run before going manual.
 - **Never** include `-project=` / `ZYMTRACE_PROJECT` in profiler args, env vars, or values templates. Always use the default project — the agent creates it automatically.
 - **Never** create overlay / temporary values files alongside the canonical one — edit in place.
 - **Never** run the install without explicit user confirmation showing the resolved target gateway endpoint.
-- **Never** turn on PC sampling silently. It's a powerful feature — gives you SASS-level disassembly + stall reasons — but NVIDIA requires the *workload* to run with elevated privileges to enable it: either `privileged: true` on the k8s pod, or `sudo` when running a bare binary. That's a workload-side change that needs explicit user confirmation. Recommend it for dev/staging deep-dives or on-demand production debugging. See [reference.md § PC sampling](reference.md#pc-sampling).
+- **Never** turn on PC sampling silently. It's a powerful feature (NVIDIA only) — gives you SASS-level disassembly + stall reasons — but NVIDIA requires the *workload* to run with elevated privileges to enable it: either `privileged: true` on the k8s pod, or `sudo` when running a bare binary. That's a workload-side change that needs explicit user confirmation. Recommend it for dev/staging deep-dives or on-demand production debugging. See [reference.md § PC sampling](reference.md#pc-sampling).
+- **Never** create an Agent Config rule (automatic injection, off-CPU) without the user's confirmation — it changes what every matching agent does, without a redeploy.
 - **Never** skip Step 5 verification — DaemonSet "Ready" doesn't mean the agent is reaching the backend.

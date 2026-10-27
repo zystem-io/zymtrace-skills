@@ -101,4 +101,3 @@ The output-template skeleton is in the shared doc. The allocation **Observed Cal
 
 - Common rules (ground in returned data, never analyze local profile files, never query the DB directly) are in [`shared/analysis-conventions.md`](../../shared/analysis-conventions.md).
 - **Always** ground the recommendation in the data the MCP returned (allocation sites, bytes, percentages) — don't fabricate signals the data doesn't show.
-</content>

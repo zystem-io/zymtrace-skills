@@ -1,7 +1,7 @@
 ---
 name: optimize-gpu-workloads
 description: |
-  Analyze GPU performance with zymtrace — a GPU/CUDA workload, a GPU flamegraph, the hot kernel, why the GPU isn't saturated, or an inference server (vLLM, SGLang, NVIDIA Dynamo-Triton, TensorRT-LLM) or training/fine-tuning job. The zymtrace MCP pulls the data (GPU metrics, flamegraphs); YOU analyze. ALWAYS cross-check the CPU side with the same filter — a GPU workload's bottleneck often hides host-side (tokenizer, DataLoader, Python overhead, sync points) — so pull GPU metrics, the GPU flamegraph, AND the matching CPU flamegraph. Scope to code the user controls; recommend AND apply the fix in the user's source (ask for the path if it isn't local), then close with a follow-up. ANY request mentioning GPU, CUDA, an accelerator, inference, an inference server, or training/fine-tuning routes HERE — including "investigate/troubleshoot/diagnose/look into/what's wrong with" phrasings. (Outright broken rather than slow — no GPU profiles, NVML missing, pods crash-looping — use troubleshoot-zymtrace-profiler.) CPU-only workload with no GPUs → optimize-cpu-workloads.
+  Analyze GPU performance with zymtrace — a GPU workload (NVIDIA CUDA or AMD ROCm), a GPU flamegraph, the hot kernel, why the GPU isn't saturated, or an inference server (vLLM, SGLang, NVIDIA Dynamo-Triton, TensorRT-LLM) or training/fine-tuning job. The zymtrace MCP pulls the data (GPU metrics, flamegraphs); YOU analyze. ALWAYS cross-check the CPU side with the same filter — a GPU workload's bottleneck often hides host-side (tokenizer, DataLoader, Python overhead, sync points) — so pull GPU metrics, the GPU flamegraph, AND the matching CPU flamegraph. Scope to code the user controls; recommend AND apply the fix in the user's source (ask for the path if it isn't local), then close with a follow-up. ANY request mentioning GPU, CUDA, ROCm, an accelerator, inference, an inference server, or training/fine-tuning routes HERE — including "investigate/troubleshoot/diagnose/look into/what's wrong with" phrasings. (Outright broken rather than slow — no GPU profiles, NVML missing, pods crash-looping — use troubleshoot-zymtrace-profiler.) CPU-only workload with no GPUs → optimize-cpu-workloads.
   Trigger phrases: "analyze/investigate/troubleshoot/diagnose my GPU workload", "investigate my inference/training/fine-tuning job", "look into my vLLM/SGLang/Triton/TensorRT-LLM workload", "what's wrong with my GPU job", "where's the bottleneck in vllm/sglang/triton", "find the hot kernel", "GPU isn't saturated", "GPU utilization is low", "why is my GPU idle", "why is inference slow", "analyze the GPU flamegraph", "which kernel uses the most GPU", "investigate my CUDA workload", "profile my training job".
 ---
 
@@ -23,7 +23,7 @@ If the user hands you anything close to that (or shorter — "what's slow on my 
 
 The MCP pulls the data; you do the analysis *and* the discipline of asking for both sides. Establish a data path first (pre-flight, in the shared doc).
 
-1. **Pull the workload's GPU metrics first, for context.** GPU utilization, memory used/bandwidth, SM efficiency, Tensor-Core activity, temperature, and PCIe throughput — plus CPU utilization — to establish whether the workload is GPU- or host-bound and which view will be informative. **If the workload is an inference server, also pull its framework metrics where collected — vLLM, SGLang, and NVIDIA Dynamo-Triton** (queue depth / pending requests, running-vs-waiting batch size, tokens/sec, KV-cache utilization, prefix-cache hit rate, time-to-first-token). These tell you whether the GPU is starved, saturated, or memory-bound *before* you read a single frame. Carry the numbers into the recap; they frame the flamegraph findings. (Interpretation patterns: [Inference-server specifics](#inference-server-specifics) below.)
+1. **Pull the workload's GPU metrics first, for context.** GPU utilization, memory used/bandwidth, SM efficiency, Tensor-Core activity, temperature, and PCIe throughput — plus CPU utilization — to establish whether the workload is GPU- or host-bound and which view will be informative. **If the workload is an inference server, also pull its framework metrics where collected — vLLM, SGLang, and NVIDIA Dynamo-Triton** (queue depth / pending requests, running-vs-waiting batch size, tokens/sec, KV-cache utilization, prefix-cache hit rate, time-to-first-token). TensorRT-LLM has no framework metrics — use its GPU metrics and profiles. These tell you whether the GPU is starved, saturated, or memory-bound *before* you read a single frame. Carry the numbers into the recap; they frame the flamegraph findings. (Interpretation patterns: [Inference-server specifics](#inference-server-specifics) below.)
 
 2. **Query the MCP for the workload's data** at the scope the user named (executable / container / pod / time range / model).
 
@@ -48,6 +48,25 @@ For vLLM, SGLang, and NVIDIA Dynamo-Triton, the framework metrics (when collecte
 - **Low GPU utilization + healthy queue** → host-side bottleneck (tokenizer, scheduler, Python). Cross-check CPU.
 - **High utilization + low tokens/sec** → kernel inefficiency or memory-bandwidth bound, not a starvation problem.
 - Common inference fixes are config knobs: `--enable-prefix-caching`, `--enable-chunked-prefill`, `VLLM_ATTENTION_BACKEND=...`, tensor-parallel sizing, batch/`max-num-seqs` tuning. Name the specific flag.
+- **CUDA / HIP graphs are profiled** — engines use them by default, and kernels inside a graph appear in the flamegraph under the code that launched the graph. Don't recommend `--enforce-eager` just to see kernels.
+
+## AMD (ROCm) workloads
+
+The protocol is the same — GPU view, then the CPU view with the same filter — with these differences:
+
+- The GPU flamegraph shows HIP kernels under the CPU stacks that launched them. **No PC sampling** (it's NVIDIA-only), so no instruction-level or stall-reason data.
+- AMD device metrics are per device, **not per process** — attribute a device's utilization to a workload only when it's the only one on that GPU.
+- zymtrace's AI-generated recommendations don't cover ROCm yet; do the analysis yourself from the flamegraphs.
+
+## Rule out the hardware path
+
+When the GPU looks underused, collectives (NCCL all-reduce, all-gather) are slow, or host↔device copies are slower than they should be — and neither the GPU nor the CPU view shows a code-level cause — the bottleneck may be the machine, not the code. Ask the user to open **GPU Topology** in the zymtrace UI for the host (it isn't exposed through the MCP) and check:
+
+- **Interconnect Matrix**: degraded NVLink pairs (marked, with CRC/replay/recovery error rates), or a pair falling back to a PCIe path (`SYS`, `NODE`, `PHB`). One GPU's whole row and column degraded points to that GPU's port, cable, or switch path.
+- **Recommendations** panel: processes running on CPUs that aren't on their GPU's NUMA node, with the `numactl` command that fixes it.
+- **Device health**: ECC errors, retired pages, row remapping, XID errors.
+
+A placement problem is fixed with `numactl` or the scheduler's CPU/NUMA affinity; a degraded link or ECC/XID errors mean draining or repairing the node. Don't tune code on a node with a sick interconnect. Docs: <https://docs.zymtrace.com/features/gpu-topology>
 
 ## GPU call-tree rendering (Observed Call Tree section)
 
@@ -98,10 +117,10 @@ constraint is on the GPU side". Keep short.>
 - **Different filters on the two views.** Cross-view only works when the slice matches. Re-use the MCP's resolved filter, don't paraphrase it.
 - **Expecting the MCP to name the pattern for you.** It returns raw data — frames, kernels, percentages. Naming the pattern (kernel-launch-bound, memory-bandwidth bound, DataLoader-starved, NCCL-collective-bound, sync-bound) is *your* job.
 - **Missing a host-side bottleneck.** A GPU at 60% means the host is starving it; the CPU cross-check is where you find out why.
+- **Tuning code on a sick node.** If collectives or copies are slow without a code-level cause, rule out the hardware path (GPU Topology) before spending effort on kernels.
 
 ## Security constraints
 
 - Common rules (ground in returned data, never analyze local profile files, never query the DB directly) are in [`shared/analysis-conventions.md`](../../shared/analysis-conventions.md).
 - **Never** declare the investigation done after only the GPU view. Pulling the CPU side with the same filter is the load-bearing step.
 - **Never** recommend enabling PC sampling on a workload (which requires `privileged: true`) without flagging the security implication. See [install-zymtrace-profiler § PC sampling](../install-zymtrace-profiler/reference.md#pc-sampling).
-</content>
