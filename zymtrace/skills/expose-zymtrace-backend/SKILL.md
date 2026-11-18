@@ -30,6 +30,8 @@ kubectl get ingressclass
 
 If `helm`/`kubectl` are missing → point to install docs; do **not** install them. If no zymtrace release exists → wrong skill, route to `install-zymtrace-backend`.
 
+**Version check (once per session).** Run `bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh` (it reads the backend Helm release). If it reports `status: outdated`, ask once whether to upgrade ([`shared/conventions.md` § Check for a newer zymtrace release](../../shared/conventions.md#check-for-a-newer-zymtrace-release)), then continue with the exposure either way.
+
 ## Pre-resolve what you can
 
 > **Resolve namespace + release name first.** Recommended defaults `zymtrace` / `backend`; for an existing release use *its* namespace and name. Full policy: [`shared/conventions.md`](../../shared/conventions.md). Commands use `<NS>` and `<REL>` as placeholders.

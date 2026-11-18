@@ -132,11 +132,15 @@ helm search repo zymtrace/backend --versions | head -5
 
 **Latest version + what changed.** `helm search` (above) is the source of truth for which chart versions are actually *published* — always verify the target appears there before upgrading. To resolve **"latest"** or see **what changed** between the current version (from Pre-resolve) and the target, read the changelog: <https://docs.zymtrace.com/changelog> (newest at the top). Surface to the user the latest available version, the target you'll move to, and a one-to-three-line summary of the changes (Major entries especially). **If `helm search` returns nothing** (repo just added / stale cache / air-gapped), the changelog is the fallback for naming the latest release — but you still can't `helm upgrade --version X.Y.Z` until the repo actually resolves that chart.
 
+For a quick current-vs-latest summary, run `bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh [<gateway-url>]`. It prints the instance version, the latest release, every release in between (`behind:`) and a link to the oldest of them in the changelog (`notes:`). Other skills run it once per session and send the user here when they accept an upgrade.
+
 ERROR: target version not listed → either the version hasn't been published, or `helm repo add` was never run. `helm repo list` to check, `helm repo add zymtrace https://helm.zystem.io` if needed.
 
 ### Step 4: Confirm with the user before running
 
 Before executing any `helm upgrade` command in this skill, **always print the exact command + the resolved values** (release name, target chart version, target image tag, namespace, values file path) and ask the user to confirm. Wait for explicit approval. Do not run on assumed consent.
+
+This confirmation stays when the user has opted into auto-upgrades (`zymtrace-auto-upgrade: on`): the opt-in only skips the earlier "want to upgrade?" question ([`shared/conventions.md` § Opt-in](../../shared/conventions.md#opt-in-upgrade-without-being-asked)).
 
 Then run the path that matches:
 
@@ -207,6 +211,12 @@ kubectl get deploy <PREFIX>-ingest <PREFIX>-web <PREFIX>-gateway <PREFIX>-symdb 
   -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.template.spec.containers[0].image}{"\n"}{end}'
 ```
 
+Then check the profilers against the new backend version:
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh
+```
+Upgrade the profilers to the **latest** release too (the target is always the latest, as for the backend), via [`install-zymtrace-profiler`](../install-zymtrace-profiler/SKILL.md). A `profiler:` line ending in `too far; upgrade to …` is more than 3 releases behind the backend and isn't expected to work, so that one is needed; `still works; upgrade to …` is recommended but not urgent. Docker or binary profilers don't show up there; point the user to **Settings → Profiler Inventory**.
+
 ### Step 6: Persist the canonical values file
 
 ##### Claude runs
@@ -245,6 +255,7 @@ Exit when ALL of the following are true (substitute `<NS>` / `<REL>` / `<PREFIX>
 - [ ] No `license` / `auth` / `forbidden` errors in `kubectl logs deployment/<PREFIX>-ingest -n <NS> --tail=50`. (Job logs are only available if the Job hasn't been hook-deleted yet.)
 - [ ] Gateway responds: `curl -fsI http://<host>` returns 2xx/3xx/4xx (not 5xx / connection-refused / timeout).
 - [ ] If `helm-diff` was used pre-upgrade: the rendered changes match what `helm get manifest <REL> -n <NS>` shows now.
+- [ ] Profilers checked against the new backend version and offered an upgrade to the latest (needed when more than 3 releases behind).
 
 If any box fails after `--atomic` did NOT auto-rollback, run Step 7.
 

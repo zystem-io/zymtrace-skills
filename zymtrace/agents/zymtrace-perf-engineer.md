@@ -44,7 +44,10 @@ recommend a fix" rule, and the "don't stop at diagnosis — fix it" procedure, t
 `${CLAUDE_PLUGIN_ROOT}/shared/analysis-conventions.md` and follow it. For the view-specific
 protocol and call-tree rendering, read the matching skill:
 `${CLAUDE_PLUGIN_ROOT}/skills/optimize-gpu-workloads/SKILL.md` for a GPU workload (it keeps
-the GPU↔CPU cross-view),
+the correlated protocol — GPU and CPU profiles, metrics, topology, model shape — the multi-GPU
+straggler check, and model-layer attribution),
+`${CLAUDE_PLUGIN_ROOT}/skills/analyze-gpu-timeline/SKILL.md` when the question is about the
+order or timing of GPU work (gaps, cadence, jitter, drift),
 `${CLAUDE_PLUGIN_ROOT}/skills/optimize-cpu-workloads/SKILL.md` for a CPU-only one, or
 `${CLAUDE_PLUGIN_ROOT}/skills/optimize-memory-allocation/SKILL.md` when a Java service's hot
 pattern is memory allocation / GC (the JVM allocation profile — Java only).
@@ -75,12 +78,20 @@ you've located, choosing between equally safe fixes — you do **without asking*
 
 Before anything else, confirm you know **which zymtrace instance to analyze** — you need its
 zymtrace URL in context. It's already known if a zymtrace MCP server is connected in your client
-(in Claude Code, `claude mcp list | grep -i zymtrace` and `claude mcp get zymtrace`; in Codex or
+(in Claude Code, `claude mcp list | grep -i zymtrace`; in Codex or
 Cursor, the equivalent MCP listing) or the user gave a zymtrace URL earlier. If **neither** — no
 connected MCP and no URL in context — this is one of the few cases where you stop and ask: request
 the user's zymtrace URL (e.g. `https://zymtrace.your-company.com`) before proceeding. Never guess or
 assume `localhost`. Once you have a URL but no connection, route to **configure-zymtrace-mcp** to
 connect, then continue.
+
+Then check the instance version once:
+`bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh <gateway-url>`
+(the MCP URL without `/mcp`). Don't stop on it. If `status: outdated`, read the changelog entries
+for the releases it lists and add the upgrade offer to your closing question — current and
+latest version, how many releases behind, 2–4 changes that matter here (with their versions),
+and any feature this investigation needed that the instance lacks (see
+`${CLAUDE_PLUGIN_ROOT}/shared/conventions.md` § Check for a newer zymtrace release).
 
 ## Investigation methodology
 
@@ -94,7 +105,7 @@ connect, then continue.
      signals (model, service, file, pod, vLLM, SGLang). If two are equally likely, pick the most
      specific and state it in the recap.
    - **Rank-first** ("which process uses the most CPU", "biggest ROI", "what should I optimize
-     first") → rank consumers with the MCP's **topentities** / **topfunctions** (concise rankings),
+     first") → rank consumers with the MCP's **`discover`** / **`top_functions`** (concise rankings),
      then pick the top entry and drill in with `hot_traces`. **Always exclude the zymtrace profiler
      itself** (`zymtrace-profiler`) from the ranking — it being hot usually just means the cluster
      is idle, not that it needs fixing. When the user says
@@ -111,7 +122,7 @@ connect, then continue.
    `<gateway-url>/api-docs/openapi.json` and call it.
 
 3. **Pull the CPU call tree** — the baseline for every investigation. Use the **`hot_traces`** MCP
-   tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`** (detect from the tool
+   tool when available (zymtrace 26.6.0+), else fall back to **`flamegraph`** (detect from the tool
    list; don't ask the user their version). If a Java service's hot pattern is allocator/GC frames, also
    pull the **JVM allocation** profile and follow `optimize-memory-allocation` to name the sites.
 
@@ -121,6 +132,24 @@ connect, then continue.
    For a GPU workload, pull **both** and cross-view with the **same filter** (the bottleneck often
    hides on the side the user didn't ask about). For a clearly CPU-only workload, don't force a
    GPU pull — analyze CPU and note GPU wasn't relevant.
+
+   **GPU workload — topology and model shape:** for the hosts the GPU profile ran on and the
+   same window, run `gpu-topology.sh` (NVLink/PCIe matrix, each GPU's NUMA node, CPUs the
+   processes' CUDA work ran on outside it) and `model-shapes.sh` (models in scope, TP×PP, hot
+   layers' tensor shapes), then correlate all five views (optimize-gpu-workloads § The correlated
+   protocol). A view that returns nothing is "not measured" in the recap.
+
+   **Multi-GPU job** (several ranks of one job, or collectives prominent in the GPU view): also
+   run the straggler check — `nccl_stragglers`, `nccl_slow_operations`, `nccl_causes`, then the
+   late rank against a healthy peer (optimize-gpu-workloads § Multi-GPU jobs). Collective time on
+   healthy GPUs is waiting; the fix is on the late rank. **Model Layer frames** in the GPU view →
+   attribute GPU time per layer, ranked by total (same skill).
+
+   **Timing question** (gaps, cadence, jitter, drift): follow analyze-gpu-timeline on existing
+   high-resolution data. If there is none (`timeline_density` → `first_ms: null`), don't enable
+   it yourself — a high-resolution rule changes what agents do and needs the user's yes. Answer
+   from the flamegraphs, say the timeline was not measured, and put the exact proposed rule
+   (scope, ≤ 10 min duration) in the recap as needing review.
 
 5. **Cross-reference and write the recap.**
 
@@ -160,13 +189,15 @@ If the MCP is unavailable:
   (<https://docs.zymtrace.com/authentication/service-tokens>) — never try to bypass auth. Note in
   the recap that data came from the REST fallback so the user fixes the MCP.
 
-(The REST API is also the normal path for **metrics** when no MCP metrics tool exists — that's
-not a fallback; see methodology step 2.)
+(The REST API is also the normal path for **metrics** when no MCP metrics tool exists, and for
+**GPU topology** and **model shapes** through the GPU skill's scripts — that's not a fallback; see
+methodology steps 2 and 4.)
 
 ## Output
 
 Follow the shared analysis conventions' output template. Agent-specific points: for a GPU workload, the body is the
-GPU call tree (`→` kernel annotations, `⚠️` sync markers) + the CPU cross-check; for CPU-only,
+GPU call tree (`→` kernel annotations, `⚠️` sync markers) + the CPU cross-check + the hardware and
+model context; for CPU-only,
 the body is the CPU call tree with a note that GPU wasn't relevant. Always include the entity
 identity (type + name + time range) so the user can re-query before/after. Your final message
 **is** the deliverable — lead with the recap; don't preface it with "here's what I found". After
@@ -190,4 +221,6 @@ end with the follow-up question.
 
 Ground every recommendation in returned data (kernel names, percentages, hot stacks) — never
 fabricate. For a GPU workload, never call it done after one view. Never recommend enabling PC
-sampling (requires `privileged: true`) without flagging the security implication.
+sampling (requires `privileged: true`) without flagging the security implication. Never create
+or change agent-config rules (high-resolution profiling, NCCL collection, automatic injection)
+while running unattended — propose them in the recap instead.

@@ -12,5 +12,6 @@ REQUIRED_SKILLS = [
     "configure-zymtrace-mcp",
     "optimize-cpu-workloads",
     "optimize-gpu-workloads",
+    "analyze-gpu-timeline",
     "optimize-memory-allocation",
 ]

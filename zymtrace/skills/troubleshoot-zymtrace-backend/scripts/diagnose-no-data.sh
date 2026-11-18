@@ -57,11 +57,13 @@ fi
 note "inspecting $POD"
 LOGS=$(kubectl logs -n "$NS_PR" "$POD" --tail=500 2>/dev/null)
 
-if echo "$LOGS" | grep -qE 'license is valid until|License is valid'; then
-  ok "license validated"
+if echo "$LOGS" | grep -q 'Enabling features from license'; then
+  ok "backend accepted the profiler"
+elif echo "$LOGS" | grep -q 'Connecting to ingest at'; then
+  warn "profiler is connecting to the gateway, not accepted yet"
 fi
-if echo "$LOGS" | grep -qE 'streaming.*connection|established.*connection'; then
-  ok "streaming connection to backend established"
+if echo "$LOGS" | grep -q "hmac doesn't match"; then
+  err "profiler is newer than the backend — upgrade the backend to the latest"
 fi
 if echo "$LOGS" | grep -qE 'connection refused|dns lookup failed|no such host'; then
   err "profiler cannot reach backend gateway — check --collection-agent value"
@@ -69,9 +71,9 @@ if echo "$LOGS" | grep -qE 'connection refused|dns lookup failed|no such host'; 
   warn "fix: update profiler values 'profiler.args[0]' = -collection-agent=<correct-host:port>"
   warn "then: helm upgrade --install <REL_PR> zymtrace/profiler -n <NS_PR> -f <values-file> --reset-then-reuse-values --atomic"
 fi
-if echo "$LOGS" | grep -qiE 'forbidden|unauthorized|invalid.*license|license.*expired'; then
+if echo "$LOGS" | grep -qiE 'forbidden|unauthorized|invalid.*license|license.*expired|not allowed to start'; then
   err "auth / license issue on the agent side — see § License errors in SKILL.md"
-  echo "$LOGS" | grep -iE 'forbidden|unauthorized|invalid.*license|license.*expired' | head -3 | sed 's/^/      /'
+  echo "$LOGS" | grep -iE 'forbidden|unauthorized|invalid.*license|license.*expired|not allowed to start' | head -3 | sed 's/^/      /'
 fi
 
 # ---------------------------------------------------------------------------
@@ -128,8 +130,8 @@ fi
 
 INGEST_LOGS=$(kubectl logs -n "$NS_BE" deployment/"${PREFIX}-ingest" --tail=200 --all-containers=true 2>/dev/null)
 
-if echo "$INGEST_LOGS" | grep -qE 'received profile|processed batch|license is valid'; then
-  ok "ingest is processing data"
+if echo "$INGEST_LOGS" | grep -q 'license is valid until'; then
+  ok "ingest started with a valid license"
 fi
 if echo "$INGEST_LOGS" | grep -qiE 'clickhouse.*(refused|dial tcp|cannot connect)'; then
   err "ingest cannot reach ClickHouse — check Step 4 + use_existing host/port"

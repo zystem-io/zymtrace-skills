@@ -54,6 +54,10 @@ When a skill needs source-of-truth content (docs, chart values, compose files), 
 | Inference server metrics | https://docs.zymtrace.com/gpu/inference-server-metrics |
 | AMD GPU metrics & profiles | https://docs.zymtrace.com/gpu/amd/gpu-metrics |
 | Metrics reference (every metric + dashboard) | https://docs.zymtrace.com/gpu/metrics-reference |
+| GPU Straggler Detector (enable NCCL metrics, stragglers, slow collectives, causes) | https://docs.zymtrace.com/gpu/nvidia/nccl |
+| NCCL metrics (every key and attribute) | https://docs.zymtrace.com/gpu/metrics-reference#nccl |
+| Model shapes (enable, Models page, Model Layer frames, limitations) | https://docs.zymtrace.com/gpu/models |
+| GPU Timeline (high-resolution profiling, reading the timeline) | https://docs.zymtrace.com/gpu/nvidia/timeline |
 
 ### Analysis features in the UI (`docs.zymtrace.com`)
 | Topic | URL |
@@ -62,6 +66,14 @@ When a skill needs source-of-truth content (docs, chart values, compose files), 
 | K8s Resource IQ (Kubernetes request/limit right-sizing) | https://docs.zymtrace.com/features/right-sizing |
 | GPU Topology (NVLink, ECC/XID, NUMA placement) | https://docs.zymtrace.com/features/gpu-topology |
 | AI Assistant (in-app) | https://docs.zymtrace.com/ai-assistant/using-ai-assistant |
+| Public REST API spec of an instance (agent config, timeline pattern API, …) | `<gateway-url>/api-docs/openapi.json` |
+
+### Feature write-ups with worked examples (`zymtrace.com`)
+| Topic | URL |
+|-------|-----|
+| GPU Straggler Detector — sequence-length and throttled-GPU stragglers, from detection to fix | https://zymtrace.com/article/gpu-straggler-detector/ |
+| Model-aware GPU profiling — a misaligned output layer found through Model Layer frames | https://zymtrace.com/article/model-aware-gpu-profiling/ |
+| GPU execution timeline — gaps, copies and drift in an embedding workload (568 s → 82 s) | https://zymtrace.com/article/gpu-timeline/ |
 
 ### Public images & artifacts
 - Backend services: `ghcr.io/zystem-io/zymtrace-pub-backend:<VERSION>` (also `docker.io/zystemio/zymtrace-pub-backend`)

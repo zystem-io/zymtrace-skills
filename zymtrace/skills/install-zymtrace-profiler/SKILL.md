@@ -1,8 +1,8 @@
 ---
 name: install-zymtrace-profiler
 description: |
-  Use when installing the zymtrace profiler agent on Kubernetes (Helm DaemonSet), Docker, or as a binary with systemd, and wiring workloads up to it. Covers CPU-only profiling, off-CPU profiling, NVIDIA GPU profiling (CUDA 12.x+; automatic injection from the UI or CUDA_INJECTION64_PATH), AMD GPU profiling (ROCm 7.x+), inference engines (vLLM, SGLang, NVIDIA Dynamo-Triton, TensorRT-LLM), GPU and inference server metrics, and air-gapped installs via a custom registry. Connects the agent to an existing backend gateway.
-  Trigger phrases: "install profiler", "install zymtrace profiler", "install zymtrace agent", "deploy the profiler", "deploy zymtrace DaemonSet", "set up GPU profiling", "set up CUDA profiling", "set up ROCm / AMD GPU profiling", "profile my GPU workloads", "profile vLLM / SGLang / Triton / TensorRT-LLM", "enable off-CPU profiling", "install profiler on EKS / GKE / Slurm / bare-metal", "install profiler on every node", "start collecting profiles".
+  Install the zymtrace profiler agent (Kubernetes Helm DaemonSet, Docker, or binary with systemd) and wire workloads to it: CPU and off-CPU profiling, NVIDIA GPU profiling (CUDA 12.x+, automatic injection or CUDA_INJECTION64_PATH), AMD GPU profiling (ROCm 7.x+), inference engines (vLLM, SGLang, Dynamo-Triton, TensorRT-LLM), GPU straggler detection and model shapes (on by default at setup), and air-gapped registries. Connects the agent to an existing backend.
+  Trigger phrases: "install the zymtrace profiler/agent", "deploy the profiler DaemonSet", "set up GPU/CUDA/ROCm profiling", "profile my GPU workloads", "profile vLLM/SGLang/Triton/TensorRT-LLM", "enable off-CPU profiling", "enable straggler detection", "enable model shapes", "install profiler on EKS/GKE/Slurm/bare-metal", "start collecting profiles".
 ---
 
 # Install zymtrace Profiler
@@ -54,6 +54,8 @@ helm list -A | grep -i zymtrace      # locate the backend release
 
 If `helm`/`kubectl` are missing → point to install docs; do **not** install them. If no backend release is found anywhere → STOP and route to `install-zymtrace-backend` first; the profiler has nowhere to send data without it.
 
+**Version check.** Install the latest release, and the backend should be on it too (a profiler shouldn't run newer than its backend). Check the backend first: `bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh [<gateway-url>]` (no URL → it reads the backend Helm release). If it reports `status: outdated`, ask once whether to upgrade the backend to the latest before installing the profiler ([`shared/conventions.md` § Check for a newer zymtrace release](../../shared/conventions.md#check-for-a-newer-zymtrace-release)). Only if the user declines, install the profiler at the backend's version.
+
 ## Pre-resolve what you can
 
 > **Recommend defaults `zymtrace` / `profiler`** for namespace + release name. Full policy: [`shared/conventions.md`](../../shared/conventions.md).
@@ -84,6 +86,8 @@ Things you **must** ask:
 - **NVIDIA driver / device plugin missing** on GPU nodes — CPU profiling still works, GPU profiling won't until the driver is installed.
 - **PC sampling** disabled (default) — useful for production; explicitly enabled only when the user asks (requires CAP_SYS_ADMIN, see [reference.md § PC sampling](reference.md#pc-sampling)).
 - **Off-CPU profiling** disabled (default) — offer it when the user cares about latency or waiting (locks, I/O). Host-wide; enable with `--enable-off-cpu` or a rule in the UI. See [reference.md § Off-CPU profiling](reference.md#off-cpu-profiling).
+- **GPU straggler detection and model shapes** (Beta, off by default in the profiler) — **recommend turning both on for every GPU workload during initial setup.** They're workload env vars, not chart values: `ZYMTRACE_CUDAPROFILER__NCCL=true` (on every rank; needs **NCCL 2.27+**, NVIDIA only) and `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true` (AMD: `ZYMTRACE_ROCMPROFILER__MODEL_SHAPE__ENABLED=true`). Auto-injected processes get straggler detection from the rule's **NCCL collection** override; model shapes still need the env var. Also turn on **Settings → Feature Flags → Models** so the Models page shows. See [reference.md § GPU features](reference.md#gpu-features-straggler-detection-model-shapes-timeline).
+- **High-resolution profiling (GPU timeline)** is **not** an install-time setting — it's switched on on demand, briefly, via a short-lived Agent Config rule (UI or API). Route to [`analyze-gpu-timeline`](../analyze-gpu-timeline/SKILL.md).
 
 ## Decision tree
 
@@ -145,7 +149,7 @@ helm repo update zymtrace
 helm search repo zymtrace/profiler --versions | head -5
 ```
 
-**Version to install.** `helm search` (above) is the source of truth for available chart versions — install the newest it lists unless the user pins one. **If it returns nothing** (repo just added and the cache is stale, or air-gapped), fall back to the changelog at <https://docs.zymtrace.com/changelog> — the top entry is the latest release. Keep the profiler on the same version as the backend. Tell the user which version you're installing before Step 3.
+**Version to install: the latest release.** `helm search` (above) is the source of truth for available chart versions; install the newest it lists. **If it returns nothing** (repo just added and the cache is stale, or air-gapped), fall back to the changelog at <https://docs.zymtrace.com/changelog> — the top entry is the latest release. The backend should be on the latest too (Version check above); only when the user declined that upgrade, install the backend's version instead. Tell the user which version you're installing before Step 3.
 
 ### Step 2: Generate the canonical values file
 
@@ -186,7 +190,7 @@ ERROR: pod CrashLoopBackOff with `permission denied` on `/sys/kernel/debug` → 
 bash ${CLAUDE_PLUGIN_ROOT}/skills/install-zymtrace-profiler/scripts/verify-profiler.sh <NS> <REL>
 ```
 
-Checks DaemonSet readiness, license validity in logs, GPU library extraction (if `cudaProfiler.enabled`), and connection-to-gateway evidence (no `connection refused` or `dns lookup failed` in last 50 log lines).
+Checks DaemonSet readiness, whether the backend accepted the agent (`Enabling features from license` in its logs), GPU library extraction (if `cudaProfiler.enabled`), and connection errors (`connection refused`, `dns lookup failed`, `hmac doesn't match`, `not allowed to start`).
 
 ### Step 6: Persist the canonical values file
 
@@ -201,14 +205,15 @@ Recommend the customer commit the file: `git add <values-file> && git commit -m 
 
 If GPU profiling was enabled, the agent is running but **no workload is being profiled yet** — the GPU profiler library has to be loaded into each workload process. Pick one:
 
-- **NVIDIA, automatic (recommended):** in the zymtrace UI, **Settings → Agent Config → CUDA Profiler → Add Rule**, target the workload with a process query, and turn on **Inject CUDA Profiler**. No manifest changes, no restarts. Doesn't capture NVTX.
-- **NVIDIA, manual:** set `CUDA_INJECTION64_PATH` on the workload.
+- **NVIDIA, automatic (recommended):** in the zymtrace UI, **Settings → Agent Config → CUDA Profiler → Add Rule**, target the workload with a process query, turn on **Inject CUDA Profiler**, and under **GPU Profiler Config** add the **NCCL collection** override (Enabled). No manifest changes, no restarts. Doesn't capture NVTX. For model shapes, also set `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true` on the workload (not in the rule yet).
+- **NVIDIA, manual:** set `CUDA_INJECTION64_PATH` on the workload, together with `ZYMTRACE_CUDAPROFILER__NCCL=true` and `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true`.
 - **AMD:** set `ROCP_TOOL_LIBRARIES` and `ROCPROFILER_REGISTER_LIBRARY` on the workload and restart it. AMD has no automatic injection.
 
 Point the user at [`reference.md § Profiling real workloads`](reference.md#profiling-real-workloads-training-and-inference) — it covers:
 
 - **Training jobs** (PyTorch / DDP / FSDP / DeepSpeed / Megatron) — set-and-forget env var, with bare-metal/Slurm and Kubernetes examples.
 - **Inference engines** (vLLM, SGLang, NVIDIA Dynamo-Triton, TensorRT-LLM) — a table linking each engine's docs page and full manifest, the pod-spec pattern, engine-specific notes, and how to verify the library loaded.
+- **Straggler detection and model shapes on by default** — every example there sets `ZYMTRACE_CUDAPROFILER__NCCL=true` and `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true` next to `CUDA_INJECTION64_PATH`; keep them when adapting a manifest. Then turn on **Settings → Feature Flags → Models**. UI override, AMD variant and caveats: [`reference.md § GPU features`](reference.md#gpu-features-straggler-detection-model-shapes-timeline).
 
 Authoritative docs: <https://docs.zymtrace.com/install/profiler/profiling-gpu-workloads> and <https://docs.zymtrace.com/install/profiler/profiling-inference-engines>.
 
@@ -228,9 +233,10 @@ Exit when ALL of the following are true (substitute `<NS>` / `<REL>` / `<PREFIX>
 
 - [ ] `helm status <REL> -n <NS>` reports `STATUS: deployed`.
 - [ ] DaemonSet `<PREFIX>-profiler` has `DESIRED == READY` (`kubectl get ds -n <NS>`).
-- [ ] At least one pod has logged `Your license is valid until …` OR `streaming connection established` (means the agent reached the backend).
+- [ ] At least one pod has logged `Enabling features from license: …` (the backend accepted the agent). `Connecting to ingest at …` alone means it hasn't connected yet.
 - [ ] No `connection refused`, `dns lookup failed`, or `forbidden` in the last 50 log lines of any pod.
 - [ ] For GPU installs: `ls -la /var/lib/zymtrace/profiler` on a GPU node shows `libzymtracecudaprofiler.so` (NVIDIA) or `libzymtracerocmprofiler.so` (AMD) — the agent extracted it for workload mounts.
+- [ ] For GPU installs: straggler detection and model shapes recommended on the workloads (`ZYMTRACE_CUDAPROFILER__NCCL=true`, `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true`, or the rule's **NCCL collection** override) and **Settings → Feature Flags → Models** turned on — or the user declined.
 
 If any box fails, route by symptom:
 - **Agent-side issues** (CrashLoopBackOff, ImagePullBackOff, OOMKilled, no GPU profiles, NVML, license rejected) → hand off to [`troubleshoot-zymtrace-profiler`](../troubleshoot-zymtrace-profiler/SKILL.md).
@@ -247,7 +253,7 @@ Both have first-pass diagnostic scripts to run before going manual.
 - **GPU template applied on CPU-only nodes** → harmless (CUDA profiler no-ops without NVIDIA driver), but wastes pod resources via the nodeSelector mismatch. Either remove `nodeSelector` or scope to GPU nodes.
 - **NodeSelector targets a label the cluster doesn't actually set** → DaemonSet schedules 0 pods. `kubectl get nodes --show-labels` to confirm.
 - **`--nvml-auto-scan` left on permanently** → fine for first install (detects NVML path), but for production, switch to `--nvml-path=<path>` once the path is known (saves startup scan).
-- **Disabling CUDA graphs (`--enforce-eager`) or adding `privileged: true` "to make profiling work"** on an inference engine → neither is needed. CUDA and HIP graphs are supported; `privileged` is only for PC sampling.
+- **Disabling CUDA graphs (`--enforce-eager`) or adding `privileged: true` "to make profiling work"** on an inference engine → neither is needed. CUDA and HIP graphs are supported; `privileged` is only for PC sampling. The one use of `--enforce-eager`: full-depth Model Layer attribution, in a short diagnostic run only (it changes performance — never quote its timings as production numbers).
 - **Checking the GPU flamegraph before the engine serves any requests** → kernels are profiled only while the GPU is working. Send traffic first.
 
 ---
@@ -259,5 +265,5 @@ Both have first-pass diagnostic scripts to run before going manual.
 - **Never** create overlay / temporary values files alongside the canonical one — edit in place.
 - **Never** run the install without explicit user confirmation showing the resolved target gateway endpoint.
 - **Never** turn on PC sampling silently. It's a powerful feature (NVIDIA only) — gives you SASS-level disassembly + stall reasons — but NVIDIA requires the *workload* to run with elevated privileges to enable it: either `privileged: true` on the k8s pod, or `sudo` when running a bare binary. That's a workload-side change that needs explicit user confirmation. Recommend it for dev/staging deep-dives or on-demand production debugging. See [reference.md § PC sampling](reference.md#pc-sampling).
-- **Never** create an Agent Config rule (automatic injection, off-CPU) without the user's confirmation — it changes what every matching agent does, without a redeploy.
+- **Never** create an Agent Config rule (automatic injection, off-CPU, NCCL collection override, high-resolution profiling) without the user's confirmation — it changes what every matching agent does, without a redeploy. High-resolution rules must always expire (**Turn off automatically after**, ≤10 min).
 - **Never** skip Step 5 verification — DaemonSet "Ready" doesn't mean the agent is reaching the backend.

@@ -1,8 +1,8 @@
 ---
 name: troubleshoot-zymtrace-profiler
 description: |
-  Use when the zymtrace profiler agent is misbehaving — pods crash-looping, image pull errors, OOMKilled, CPU profiles working but no GPU profiles, NVML library not found, PC sampling not producing SASS-level data, or license errors on the profiler side. Walks symptom → diagnosis → fix. Focused on the agent itself; for "no data anywhere" use troubleshoot-zymtrace-backend.
-  Trigger phrases: "profiler not working", "profiler pods crashing", "profiler CrashLoopBackOff", "profiler ImagePullBackOff", "agent OOMKilled", "no GPU profiles", "CPU profiles work but GPU doesn't", "NVML library not found", "PC sampling not working", "profiler license rejected", "agent restart cycle", "zymtrace agent unhealthy", "fix the profiler".
+  Use when the zymtrace profiler agent is misbehaving — pods crash-looping, image pull errors, OOMKilled, CPU profiles working but no GPU profiles, NVML library not found, PC sampling not producing SASS-level data, license errors on the profiler side, or optional GPU features producing nothing (no stragglers / NCCL data, empty Models page, no GPU timeline data). Walks symptom → diagnosis → fix. Focused on the agent itself; for "no data anywhere" use troubleshoot-zymtrace-backend.
+  Trigger phrases: "profiler not working", "profiler pods crashing", "profiler CrashLoopBackOff", "profiler ImagePullBackOff", "agent OOMKilled", "no GPU profiles", "CPU profiles work but GPU doesn't", "NVML library not found", "PC sampling not working", "profiler license rejected", "agent restart cycle", "zymtrace agent unhealthy", "fix the profiler", "no stragglers detected", "GPU Stragglers page empty", "no NCCL metrics", "Models page empty", "no Model Layer frames", "no timeline data", "No high-resolution data in this range".
 ---
 
 # Troubleshoot zymtrace Profiler
@@ -34,6 +34,8 @@ helm list -A | grep -iE 'profiler.*zymtrace|zymtrace.*profiler'
 
 If the profiler release isn't installed at all, that's not a "troubleshoot" — route to `install-zymtrace-profiler`.
 
+**Version check (once per session).** Run `bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh <gateway-url>` (no URL → it reads the backend Helm release). If it reports `status: outdated`, say so early and ask once whether to upgrade to the latest — the fix may already be in a newer release (its `notes:` link), and features such as straggler detection and model shapes need 26.10.3+. A `profiler:` line saying `too far; upgrade to …` means that profiler is more than 3 releases behind the backend, outside the range expected to work: offer to upgrade it to the latest before deeper debugging. Keep diagnosing either way. Details: [`shared/conventions.md` § Check for a newer zymtrace release](../../shared/conventions.md#check-for-a-newer-zymtrace-release).
+
 ## Pre-resolve what you can
 
 > Recommend defaults `zymtrace` / `profiler`. Resolve the customer's actual values first. Full policy: [`shared/conventions.md`](../../shared/conventions.md). Commands below use `<NS>` / `<REL>` / `<PREFIX>` placeholders.
@@ -59,6 +61,9 @@ Things you may need to ask:
 | Agent **OOMKilled** / pod restart cycle | [§ OOMKilled / restart cycle](#oomkilled--restart-cycle) |
 | **CPU profiles flow, but no GPU profiles** (NVIDIA or AMD) | [§ No GPU profiles](#no-gpu-profiles) |
 | **No off-CPU profiles** | [§ No off-CPU profiles](#no-off-cpu-profiles) |
+| **No stragglers / GPU Stragglers page empty / no NCCL metrics** | [§ No straggler or NCCL data](#no-straggler-or-nccl-data) |
+| **Models page empty** or **no Model Layer frames** | [§ Models page empty or no Model Layer frames](#models-page-empty-or-no-model-layer-frames) |
+| **No GPU timeline data** / "No high-resolution data in this range" | [§ No GPU timeline data](#no-gpu-timeline-data) |
 | **NVML library not found** in agent logs | [§ NVML library not found](#nvml-library-not-found) |
 | **PC sampling enabled but no SASS-level data** | [§ PC sampling produces nothing](#pc-sampling-produces-nothing) |
 | **License rejected** on the profiler side | [§ License rejected](#license-rejected) |
@@ -224,6 +229,52 @@ Docs: <https://docs.zymtrace.com/features/off-cpu-profiling>
 
 ---
 
+## No straggler or NCCL data
+
+Straggler detection is **off by default** (Beta) and NVIDIA/NCCL only — RCCL/AMD is unsupported. First confirm the workload is GPU-profiled at all ([§ No GPU profiles](#no-gpu-profiles)) if the user also wants the CUDA flamegraph drill-down.
+
+1. **NCCL metrics arriving?** Via MCP, run `discover_metrics` on the project and look for `nccl.` metrics (`nccl.exec_time`, `nccl.bus_bandwidth`, …). Present → collection works; an empty page is a detection question (step 5). Absent → continue.
+2. **Env var on every rank?** `kubectl get pod <rank-pod> -n <ws-ns> -o jsonpath='{.spec.containers[*].env[?(@.name=="ZYMTRACE_CUDAPROFILER__NCCL")]}'` on **each** pod of the job — it must be `true` on every process (torchrun/`srun` propagate it; separately launched pods don't). Missing on some ranks → those ranks report nothing.
+3. **Injected via `CUDA_INJECTION64_PATH` but enabled only in the UI?** The **NCCL collection** override in an Agent Config rule's GPU Profiler Config applies **only to auto-injected processes**; processes loading the profiler via `CUDA_INJECTION64_PATH` ignore it → set the env var on the workload.
+4. **NCCL ≥ 2.27?** `kubectl exec <rank-pod> -n <ws-ns> -- python -c "import torch; print(torch.cuda.nccl.version())"` — e.g. `(2, 29, 2)`. Older → upgrade NCCL / the framework image.
+5. **Metrics flow but no stragglers?** Expected when: the job's communicators have **< 3 ranks** (2-rank and single-GPU jobs are never evaluated — `nccl_stragglers` returns `communicators_evaluated: 0`, i.e. not measured); or no rank was late in **≥ 2 consecutive 60 s windows** (one-window blips aren't flagged). Only collectives count — point-to-point `Send`/`Recv` isn't covered.
+
+Once data flows, analysis lives in [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md#multi-gpu-jobs-stragglers-and-slow-collectives). Setup recipes: [install reference § GPU features](../install-zymtrace-profiler/reference.md#gpu-features-straggler-detection-model-shapes-timeline). Docs: <https://docs.zymtrace.com/gpu/nvidia/nccl>
+
+---
+
+## Models page empty or no Model Layer frames
+
+Model shapes are **off by default** (Beta) and need two switches.
+
+1. **Env var on the workload?** `kubectl get pod <gpu-workload> -n <ws-ns> -o jsonpath='{.spec.containers[*].env[?(@.name=="ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED")]}'` (AMD: `ZYMTRACE_ROCMPROFILER__MODEL_SHAPE__ENABLED`). Must be `true`, next to a working GPU profiler ([§ No GPU profiles](#no-gpu-profiles)).
+2. **Auto-injected workload?** The Agent Config **GPU Profiler Config** doesn't expose model-shape settings yet — auto-injected processes still need the env var on the workload.
+3. **Models page hidden?** **Settings → Feature Flags → Models** must be on. Model Layer frames in the flamegraph don't depend on it.
+4. **"No models seen in this time range"** → no PyTorch model was loaded in a profiled process in range, or extraction isn't enabled for that process (step 1). **"Shape not stored yet"** → retry shortly. To check without the UI: `bash ${CLAUDE_PLUGIN_ROOT}/skills/optimize-gpu-workloads/scripts/model-shapes.sh <gateway-url> <project-id> <start-ms> <end-ms> --query 'host.name == "<host>"'` lists the models recorded for that scope and window (an empty list means none were recorded).
+
+Expected, not bugs:
+- **Duplicate model versions** — the structure changed after load (vLLM weight processing, `resize_token_embeddings`). Cosmetic; don't raise `MODEL_SHAPE__SETTLE` far on CUDA-graph workloads (on vLLM, 150 s collapsed layer-frame coverage from 99.4% to 13.6%).
+- **Shallow layer frames** under CUDA graph replay — one layer frame directly above each kernel, nesting lost. `--enforce-eager` restores full depth but changes performance — short diagnostic only.
+- **No layer frames** on CPU flamegraphs, backward-pass kernels, or launches whose stack stops in a native runtime (e.g. CuTe DSL).
+- vLLM shows a local snapshot path as the name with `HF_HUB_OFFLINE=1` → pass `--served-model-name <HF id>`.
+
+Docs: <https://docs.zymtrace.com/gpu/models>
+
+---
+
+## No GPU timeline data
+
+The timeline needs **high-resolution profiling**, which is off by default and on only while a short-lived rule is active (NVIDIA only; AMD isn't supported in the UI).
+
+1. **"No high-resolution data in this range"** → high-res wasn't active for those hosts then. Check **Settings → Agent Config → CUDA Profiler** for a **High-resolution profiling** rule whose CEL matches the scope and hasn't expired, then pick a range inside it.
+2. **Workload GPU-profiled?** High-res applies only to processes running the zymtrace GPU profiler library (manual or auto injection) → [§ No GPU profiles](#no-gpu-profiles).
+3. **GPU busy during the window?** Idle GPUs produce no events — send traffic while the rule is active.
+4. **"Too many events to load"** → the brushed window exceeds 1,000,000 events; pick a shorter window or narrow the query.
+
+To capture a new window (with confirmation; rules must expire, ≤10 min) and analyze it: [`analyze-gpu-timeline`](../analyze-gpu-timeline/SKILL.md). Docs: <https://docs.zymtrace.com/gpu/nvidia/timeline>
+
+---
+
 ## NVML library not found
 
 In the agent logs:
@@ -317,7 +368,7 @@ The license is validated at the **backend gateway**, not on the agent — the ag
 Exit when:
 
 - [ ] Agent pods are Running on every targeted node (`kubectl get ds -n <NS> <PREFIX>-profiler` shows `DESIRED == READY`).
-- [ ] Recent agent logs (`kubectl logs ... --tail=50`) show either `license is valid until ...` OR `streaming connection established` and no `connection refused` / `forbidden` / OOM-related errors.
+- [ ] Recent agent logs show `Enabling features from license: …` (the backend accepted the agent) and no `connection refused` / `forbidden` / `hmac doesn't match` / OOM-related errors.
 - [ ] If GPU profiling enabled: the `Intercepted zymtrace implant` line appears in agent logs after a representative workload starts.
 - [ ] Customer confirms profiles are visible in the UI (or, if backend-side issue is suspected, hand off to `troubleshoot-zymtrace-backend`).
 

@@ -53,10 +53,14 @@ tests/                           # Structural pytest suite (no API keys / cluste
   `[expose-zymtrace-backend](../expose-zymtrace-backend/SKILL.md)`, may stay relative —
   the agent resolves those when reading a known file.)
 - **Scripts are executable** (`chmod +x`) and invoked as `bash ${CLAUDE_PLUGIN_ROOT}/...`.
+  They must not require `jq`: use it when it's installed and fall back otherwise (python3 for
+  JSON that's edited and written back, plain grep/sed/awk for simple reads). Test both paths.
 - **Skill `name` == directory name.**
 - **Frontmatter is just `name` and `description`** (with `Trigger phrases:`) — the only fields
   skills use. No `metadata` block (author/repository/keywords live in `plugin.json`); no per-skill
-  version (the plugin is the versioned unit).
+  version (the plugin is the versioned unit). **`description` is at most 1024 characters**
+  (Agent Skills spec; Codex refuses to load a longer one): what the skill does, when to use it,
+  where to route instead, and the trigger phrases. Workflow rules belong in the body.
 - **Secrets never touch disk or chat** — see each skill's `## Security constraints`.
 - **Helm conventions** (namespace/release resolution, the single canonical values file,
   `--reset-then-reuse-values`, backups) are centralized in
@@ -93,7 +97,7 @@ make test      # structural tests only
 The structural suite verifies:
 - Plugin + marketplace manifests parse, have required fields, and use semver
 - Version consistency across plugin.json, marketplace.json, and every skill
-- Frontmatter presence + required fields; `name` matches the directory
+- Frontmatter presence + required fields; `name` matches the directory; `description` ≤ 1024 characters
 - Directory layout matches `REQUIRED_SKILLS` (no orphan or undeclared skills)
 - Path portability: no bare `./scripts/` invocations; every `${CLAUDE_PLUGIN_ROOT}`
   path resolves; referenced scripts are executable
