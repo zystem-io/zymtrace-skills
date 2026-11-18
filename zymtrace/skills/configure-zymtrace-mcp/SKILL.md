@@ -144,6 +144,8 @@ If it returns data, the connection works. `unauthorized` → token wrong, regene
 
 ### Step 6: Hand off
 
+**Version check first.** Run `bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh <gateway-url>`. If it reports `status: outdated`, ask once whether the user wants to upgrade before they start analyzing; older releases lack MCP tools the analysis skills use ([`shared/conventions.md` § Check for a newer zymtrace release](../../shared/conventions.md#check-for-a-newer-zymtrace-release)).
+
 Direct the user to the analytical workflow — [`optimize-cpu-workloads`](../optimize-cpu-workloads/SKILL.md) for CPU-only deployments, [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md) for GPU workloads (it adds the GPU↔CPU cross-view and inference-server pattern catalogues), or [`optimize-memory-allocation`](../optimize-memory-allocation/SKILL.md) for JVM memory-allocation / GC analysis (Java only). That's where the connected MCP actually gets used.
 
 ### Optional: pair with the GitHub MCP for code-level fixes

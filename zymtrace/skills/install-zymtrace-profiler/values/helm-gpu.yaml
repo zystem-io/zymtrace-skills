@@ -16,6 +16,8 @@
 #
 # After install, profile your workload: see the "Profiling real workloads"
 # section of reference.md for training and inference env-var/mount setup.
+# Straggler detection (ZYMTRACE_CUDAPROFILER__NCCL) and model shapes are WORKLOAD env vars,
+# not chart values. Turn both on for every GPU workload at setup — see "GPU features" in reference.md.
 
 global:
   ClusterMetadata:

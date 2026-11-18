@@ -48,7 +48,7 @@ Notes:
 - For **CPU-only** profiling, drop both `-v /var/lib/zymtrace/profiler:/opt/zymtrace-cuda-profiler` and the `--enable-gpu-metrics --nvml-auto-scan` flags.
 - `--nvml-auto-scan` is fine for first install. Switch to `--nvml-path=/path/to/libnvidia-ml.so` once you know the path (saves startup scan).
 - For service-token auth (`auth.serviceToken.enabled: true` on the backend), add `--auth-token "$ZYMTRACE_AUTH_TOKEN"`.
-- Resolve the image tag `<VERSION>` from the changelog (<https://docs.zymtrace.com/changelog>, newest at the top) — there's no Helm repo to `helm search` on this path. Match the backend's version.
+- Resolve the image tag `<VERSION>` from the changelog (<https://docs.zymtrace.com/changelog>, newest at the top) — there's no Helm repo to `helm search` on this path. Use the latest release; the backend should run it too.
 
 ### Binary (bare-metal)
 
@@ -62,7 +62,7 @@ curl -LO https://dl.zystem.io/zymtrace/<VERSION>/amd64/zymtrace-profiler.tar.gz
 sudo tar -xzvf zymtrace-profiler.tar.gz -C / --no-same-owner
 ```
 
-Resolve `<VERSION>` from the changelog (<https://docs.zymtrace.com/changelog>, newest at the top) — no Helm repo to `helm search` here. Match the backend's version and tell the user which one you're pinning.
+Resolve `<VERSION>` from the changelog (<https://docs.zymtrace.com/changelog>, newest at the top) — no Helm repo to `helm search` here. Use the latest release (the backend should run it too) and tell the user which one you're pinning.
 
 #### Run option A — `nohup` background (quickest for ad-hoc testing)
 ```bash
@@ -243,7 +243,7 @@ Installing the profiler agent gets it running on every node — that's the eBPF 
 
 ### Automatic injection via the UI (NVIDIA, recommended)
 
-On NVIDIA, the profiler can inject the CUDA profiler into matching processes itself — no manifest or env-var changes on the workload. In the zymtrace UI: **Settings → Agent Config → CUDA Profiler → Add Rule**, set a process query (CEL — the same syntax as the query bar, e.g. a container, namespace, or executable), and turn on **Inject CUDA Profiler**. The **GPU Profiler Config** setting on the same tab takes the `ZYMTRACE_CUDAPROFILER__*` options. Rules apply on the fly; no profiler or workload restart.
+On NVIDIA, the profiler can inject the CUDA profiler into matching processes itself — no manifest or env-var changes on the workload. In the zymtrace UI: **Settings → Agent Config → CUDA Profiler → Add Rule**, set a process query (CEL — the same syntax as the query bar, e.g. a container, namespace, or executable), and turn on **Inject CUDA Profiler**. The **GPU Profiler Config** setting on the same tab takes the `ZYMTRACE_CUDAPROFILER__*` options. Rules apply on the fly; no profiler or workload restart. At initial setup, also add the **NCCL collection** override (Enabled) to the same rule, so straggler detection is on from the start. Model shapes aren't in the rule yet; they need `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true` on the workload ([§ GPU features](#gpu-features-straggler-detection-model-shapes-timeline)).
 
 - **NVTX is not captured in this mode.** If the user needs NVTX ranges, use manual injection.
 - **AMD (ROCm) has no automatic injection** — ROCm workloads must be started with the env vars below.
@@ -259,17 +259,21 @@ Docs: <https://docs.zymtrace.com/install/profiler/profiling-gpu-workloads#automa
 
 The same variables enable profiling for every framework: PyTorch, DDP, FSDP, DeepSpeed, Megatron, JAX, vLLM, SGLang, Dynamo-Triton, TensorRT-LLM, custom CUDA/HIP code. The variation between training and inference is mostly *where* you set them (Slurm prolog, k8s pod spec, Docker `-e`). The ROCm profiler can't attach to an already-running process — restart the workload with the variables set.
 
+**At initial setup, turn on straggler detection and model shapes by default** next to the injection variable: `ZYMTRACE_CUDAPROFILER__NCCL=true` and `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true` on NVIDIA, `ZYMTRACE_ROCMPROFILER__MODEL_SHAPE__ENABLED=true` on AMD. The examples below include them. Details and caveats: [§ GPU features](#gpu-features-straggler-detection-model-shapes-timeline).
+
 ### Training jobs (the env-var-and-done case)
 
-Training workloads — PyTorch, DDP, FSDP, DeepSpeed, Megatron, custom CUDA — all profile the same way: set `CUDA_INJECTION64_PATH` on the training process. There's no framework-specific pod spec or launcher tweak needed.
+Training workloads — PyTorch, DDP, FSDP, DeepSpeed, Megatron, custom CUDA — all profile the same way: set `CUDA_INJECTION64_PATH` on the training process, plus the two default feature variables. There's no framework-specific pod spec or launcher tweak needed.
 
 #### Bare-metal / Slurm
 
 The library is at `/opt/zymtrace/profiler/libzymtracecudaprofiler.so` after the binary install.
 
 ```bash
-# Basic GPU profiling (no privileged access required)
+# GPU profiling + straggler detection + model shapes (no privileged access required)
 env CUDA_INJECTION64_PATH="/opt/zymtrace/profiler/libzymtracecudaprofiler.so" \
+    ZYMTRACE_CUDAPROFILER__NCCL="true" \
+    ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED="true" \
     python -u train.py
 ```
 
@@ -281,11 +285,13 @@ sudo env RUST_LOG="zymtracecudaprofiler=info" \
     python -u train.py
 ```
 
-**Set-and-forget pattern**: drop the env var in `/etc/profile.d/zymtrace.sh` (system-wide) or `~/.bashrc` (per user). Slurm users can put it in the job prolog or sbatch wrapper. Every subsequent Python/PyTorch/etc. launch picks it up automatically.
+**Set-and-forget pattern**: drop the env vars in `/etc/profile.d/zymtrace.sh` (system-wide) or `~/.bashrc` (per user). Slurm users can put them in the job prolog or sbatch wrapper. Every subsequent Python/PyTorch/etc. launch picks them up automatically.
 
 ```bash
 # /etc/profile.d/zymtrace.sh
 export CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so
+export ZYMTRACE_CUDAPROFILER__NCCL=true
+export ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true
 ```
 
 #### Kubernetes (Job, StatefulSet, multi-node DDP)
@@ -306,6 +312,10 @@ spec:
         env:
         - name: CUDA_INJECTION64_PATH
           value: "/var/lib/zymtrace/profiler/libzymtracecudaprofiler.so"
+        - name: ZYMTRACE_CUDAPROFILER__NCCL
+          value: "true"
+        - name: ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED
+          value: "true"
         volumeMounts:
         - name: zymtrace-profiler
           mountPath: /var/lib/zymtrace/profiler
@@ -325,7 +335,7 @@ Inference engines use the same variables. The docs have a tested page per engine
 | NVIDIA Dynamo-Triton | ✓ | — | <https://docs.zymtrace.com/install/profiler/profiling-inference-engines/dynamo-triton> | <https://gist.github.com/iogbole/2fda4ed7e53f70beb2df949d3eb320ef> |
 | TensorRT-LLM | ✓ | — | <https://docs.zymtrace.com/install/profiler/profiling-inference-engines/tensorrt-llm> | <https://gist.github.com/iogbole/2cba56573253f0f9e1caf86d1953929e> |
 
-The pod-spec pattern every engine page uses (NVIDIA shown; for AMD swap the env var for the two ROCm ones above and the GPU resource for `amd.com/gpu`):
+The pod-spec pattern every engine page uses, plus the two default feature variables (NVIDIA shown; for AMD swap the injection variable for the two ROCm ones above, use `ZYMTRACE_ROCMPROFILER__MODEL_SHAPE__ENABLED` and drop the NCCL one, and use `amd.com/gpu` as the GPU resource):
 
 ```yaml
 spec:
@@ -335,6 +345,10 @@ spec:
     env:
     - name: CUDA_INJECTION64_PATH
       value: /opt/zymtrace/profiler/libzymtracecudaprofiler.so
+    - name: ZYMTRACE_CUDAPROFILER__NCCL               # straggler detection (tensor-parallel collectives)
+      value: "true"
+    - name: ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED
+      value: "true"
     resources:
       limits:
         nvidia.com/gpu: 1
@@ -349,7 +363,7 @@ spec:
       type: Directory
 ```
 
-Docker equivalent: `-v /var/lib/zymtrace/profiler:/opt/zymtrace/profiler:ro -e CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so --ipc=host`. AMD Docker also needs `--device /dev/kfd --device /dev/dri --group-add video`.
+Docker equivalent: `-v /var/lib/zymtrace/profiler:/opt/zymtrace/profiler:ro -e CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so -e ZYMTRACE_CUDAPROFILER__NCCL=true -e ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true --ipc=host`. AMD Docker also needs `--device /dev/kfd --device /dev/dri --group-add video`.
 
 Engine-specific notes:
 
@@ -357,13 +371,85 @@ Engine-specific notes:
 - **SGLang** — only exposes metrics when started with **`--enable-metrics`** (SGLang's own flag, needed only if the user wants SGLang metrics in zymtrace). Port 30000.
 - **NVIDIA Dynamo-Triton** — NVIDIA only, container image only. Serves a model repository (`--model-repository`); the docs example uses the vLLM backend. Inference on port 8000, metrics on port 8002 (collected by default).
 - **TensorRT-LLM** — NVIDIA only. Docker needs NVIDIA's recommended `--ulimit memlock=-1 --ulimit stack=67108864`. zymtrace collects GPU profiles and GPU metrics; there are no TensorRT-LLM framework metrics.
-- **CUDA and HIP graphs** are supported out of the box; engines use them by default. Don't disable graphs (e.g. `--enforce-eager`) to make profiling work. On NVIDIA, graph launches are sampled (`ZYMTRACE_CUDAPROFILER__GRAPH_SAMPLING__*`, see the env var table).
+- **CUDA and HIP graphs** are supported out of the box; engines use them by default. Don't disable graphs (e.g. `--enforce-eager`) to make profiling work. On NVIDIA, graph launches are sampled (`ZYMTRACE_CUDAPROFILER__GRAPH_SAMPLING__*`, see the env var table). One exception: full-depth **Model Layer** attribution (model shapes) needs `--enforce-eager` — use it only for a short diagnostic run; it changes performance, so never quote eager timings as production numbers. See § GPU features.
 - **PC sampling** (NVIDIA only) is the only reason to add `privileged: true` / `--privileged` to an engine. See § PC sampling.
 - Kernels are profiled only while the engine is serving requests — send traffic before checking the flamegraph.
 
 **Verify** the library loaded by adding to the engine's environment:
 - NVIDIA: `RUST_LOG=zymtracecudaprofiler=info` + `ZYMTRACE_CUDAPROFILER__QUIET=false` → the engine log shows `loaded zymtrace CUDA profiler version ...`.
 - AMD: `RUST_LOG=zymtracerocmprofiler=info` + `ZYMTRACE_ROCMPROFILER__QUIET=false` → the engine log shows `zymtracerocmprofiler` lines.
+
+---
+
+## GPU features: straggler detection, model shapes, timeline
+
+All three are **off by default** in the profiler (Beta) and none is a profiler chart value. **At initial setup, turn on straggler detection and model shapes for every GPU workload** — they cost little (model shapes add about 25 MB per worker process), straggler detection only reports for jobs that run NCCL collectives, and model shapes only for PyTorch processes. Both are **workload** env vars (set on the profiled process, not the agent). High-resolution profiling stays on demand: a short-lived rule, never a default.
+
+| Feature | Switch | Requires |
+|---|---|---|
+| GPU straggler detection (NCCL metrics) | `ZYMTRACE_CUDAPROFILER__NCCL=true` on **every process of the job**, or the UI **NCCL collection** override (auto-injection only) | NVIDIA, **NCCL 2.27+**; communicators of ≥3 ranks |
+| Model shapes (Models page, Model Layer frames) | `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true` (AMD: `ZYMTRACE_ROCMPROFILER__MODEL_SHAPE__ENABLED=true`) + **Settings → Feature Flags → Models** | PyTorch model loaded in a profiled process |
+| High-resolution profiling (GPU timeline) | Short-lived Agent Config rule — not an install setting | NVIDIA (UI); see [`analyze-gpu-timeline`](../analyze-gpu-timeline/SKILL.md) |
+
+### Straggler detection (NCCL)
+
+Recommend it for every multi-GPU job. Detection + NCCL metrics work **without** CUDA profiling, but drilling into the CUDA flamegraph needs it — set both. `torchrun` passes env to its workers; `srun` passes it to tasks by default.
+
+Check NCCL version first (must be ≥ 2.27):
+```bash
+python -c "import torch; print(torch.cuda.nccl.version())"   # tuple, e.g. (2, 29, 2)
+```
+
+Kubernetes (workload container):
+```yaml
+env:
+  - name: CUDA_INJECTION64_PATH
+    value: "/opt/zymtrace/profiler/libzymtracecudaprofiler.so"
+  - name: ZYMTRACE_CUDAPROFILER__NCCL
+    value: "true"
+```
+
+Docker:
+```bash
+docker run ... \
+  -v /var/lib/zymtrace/profiler:/opt/zymtrace/profiler:ro \
+  -e CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so \
+  -e ZYMTRACE_CUDAPROFILER__NCCL="true" \
+  --ipc=host ...
+```
+
+Binary / Slurm:
+```bash
+env CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so \
+    ZYMTRACE_CUDAPROFILER__NCCL="true" \
+    torchrun --nproc-per-node=8 train.py
+
+# Slurm
+export CUDA_INJECTION64_PATH=/opt/zymtrace/profiler/libzymtracecudaprofiler.so
+export ZYMTRACE_CUDAPROFILER__NCCL="true"
+srun python train.py
+```
+
+**Auto-injection deployments (UI):** Settings → Agent Config → CUDA Profiler tab → **+ Add Rule** → CEL query → **Inject CUDA Profiler** on → **GPU Profiler Config** → **Add override** → **NCCL collection** → **Enabled** → Add. The rule's GPU Profiler Config applies **only to auto-injected processes** — processes that load the profiler via `CUDA_INJECTION64_PATH` ignore it and need the env var.
+
+Results land on the **GPU Stragglers** page. Analysis: [`optimize-gpu-workloads`](../optimize-gpu-workloads/SKILL.md#multi-gpu-jobs-stragglers-and-slow-collectives).
+
+### Model shapes
+
+1. Set `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED=true` next to `CUDA_INJECTION64_PATH` on the workload (same pod-spec / Docker / binary pattern as above). The Agent Config **GPU Profiler Config** does **not** expose model-shape settings yet — auto-injected processes still need the env var on the workload.
+2. **Settings → Feature Flags → Models** shows the Models page for every user. Model Layer frames in the flamegraph don't depend on the flag.
+
+Caveats:
+- Keep `MODEL_SHAPE__SETTLE` at its default (2 s) on CUDA-graph workloads. Raising it far (e.g. 150 s on vLLM) made the profiler read the model after CUDA graph capture and layer-frame coverage collapsed (13.6% vs 99.4%). Duplicate model versions (structure changed after load — vLLM weight processing, `resize_token_embeddings`) are cosmetic.
+- Under CUDA graph replay the layer frame sits directly above each kernel (names kept, nesting lost). Full depth needs `--enforce-eager` — short diagnostic only.
+- vLLM with `HF_HUB_OFFLINE=1`: pass `--served-model-name <HF id>`, otherwise the local snapshot path shows as the model name.
+- Overhead: ~25 MB extra in the worker process; throughput/latency within noise.
+
+### High-resolution profiling (GPU timeline)
+
+Not set at install. Enabled on demand with a short-lived rule (auto-expires, 1 s–10 min) — roughly 400 millicores extra CPU on a high-throughput workload. Procedure and analysis: [`analyze-gpu-timeline`](../analyze-gpu-timeline/SKILL.md).
+
+Docs: <https://docs.zymtrace.com/gpu/nvidia/nccl> · <https://docs.zymtrace.com/gpu/models> · <https://docs.zymtrace.com/gpu/nvidia/timeline> · <https://docs.zymtrace.com/profiler-gpu-variables>
 
 ---
 
@@ -414,6 +500,10 @@ The CUDA profiler library reads these env vars from the **profiled workload** (n
 | `ZYMTRACE_CUDAPROFILER__STACK_TRACE_SAMPLING__WINDOW_SIZE` | Sampling window. Default: 1s. |
 | `ZYMTRACE_CUDAPROFILER__GRAPH_SAMPLING__ENABLED` | Sample CUDA graph launches rather than profiling every launch; a sampled launch profiles every kernel in the graph. Default: true. |
 | `ZYMTRACE_CUDAPROFILER__GRAPH_SAMPLING__TARGET` | Graph launches to profile, per OS thread, per second. Default: 20. |
+| `ZYMTRACE_CUDAPROFILER__NCCL` | NCCL metrics for GPU straggler detection (NCCL 2.27+). Set on every rank. Default: false. |
+| `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__ENABLED` | Model shape extraction (Models page, Model Layer frames). ROCm: `ZYMTRACE_ROCMPROFILER__MODEL_SHAPE__ENABLED`. Default: false. |
+| `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__POLL_INTERVAL` | How often to look for models. Default: 30s. |
+| `ZYMTRACE_CUDAPROFILER__MODEL_SHAPE__SETTLE` | Wait after a model appears before reading it. Default: 2s (min 0.1, never above POLL_INTERVAL). Keep the default on CUDA-graph workloads. |
 
 Full reference: <https://docs.zymtrace.com/profiler-gpu-variables>
 
@@ -491,6 +581,8 @@ The agent runs as a DaemonSet with a single pod per node. Resource usage scales 
 | eBPF profiler (always-on) | <1% of one core | ~256 MB |
 | CUDA profiler (per workload) | ~25 µs / kernel launch | ~314 MB heap |
 | Per workload, ~10k kernels/s | +0.25 CPU cores | +700 MB host, +300 MB GPU |
+| High-resolution profiling (on demand, short windows) | ~400 millicores extra on a high-throughput workload | — |
+| Model shapes (per worker process) | within noise | ~25 MB |
 
 Default chart limits (`200m`/`256Mi` requests, `1000m`/`1Gi` limits) work for most workloads. For dense multi-GPU (>4 GPUs/node) or >10k kernels/s sustained, bump `profiler.resources.requests` to `cpu: 500m` / `memory: 512Mi` and `limits` to `cpu: 2000m` / `memory: 2Gi` in the values file.
 
@@ -521,3 +613,7 @@ Full env-var reference: <https://docs.zymtrace.com/profiler-configuration>
 - GPU metrics: <https://docs.zymtrace.com/gpu/gpu-metrics>
 - MIG: <https://docs.zymtrace.com/gpu/mig-support>
 - Multi-GPU: <https://docs.zymtrace.com/gpu/multi-gpu>
+- GPU Straggler Detector (NCCL): <https://docs.zymtrace.com/gpu/nvidia/nccl> · metrics: <https://docs.zymtrace.com/gpu/metrics-reference#nccl>
+- Model shapes: <https://docs.zymtrace.com/gpu/models>
+- GPU timeline: <https://docs.zymtrace.com/gpu/nvidia/timeline>
+- Blogs: <https://zymtrace.com/article/gpu-straggler-detector/> · <https://zymtrace.com/article/model-aware-gpu-profiling/> · <https://zymtrace.com/article/gpu-timeline/>

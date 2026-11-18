@@ -15,6 +15,8 @@ Once installed, describe what you want in plain English and your coding agent ha
 "connect zymtrace mcp so I can analyze my profiles from here"
 "analyze my vllm workload, find the bottleneck"
 "analyze the gpu flamegraph over the last 1 hour and suggest solutions"   # ← the universal starter
+"which gpu is the straggler in my training job?"
+"enable high-res profiling on the trainer pod for 5 minutes, then find the gaps between batches"
 ```
 
 <video src="https://github.com/user-attachments/assets/32a934b8-9709-47a3-898c-68586150f24c" width="90%"></video>
@@ -29,19 +31,20 @@ Once installed, describe what you want in plain English and your coding agent ha
 | [`install-zymtrace-backend`](zymtrace/skills/install-zymtrace-backend/) | Install the backend on Kubernetes (Helm) or Docker Compose. Handles license, databases, air-gapped registries. |
 | [`upgrade-zymtrace-backend`](zymtrace/skills/upgrade-zymtrace-backend/) | Bump image tags, chart versions, or both. Built-in rollback and verification. |
 | [`expose-zymtrace-backend`](zymtrace/skills/expose-zymtrace-backend/) | Expose the gateway via NodePort, AWS ALB, NGINX Ingress, or cloud LoadBalancer. TLS included. |
-| [`install-zymtrace-profiler`](zymtrace/skills/install-zymtrace-profiler/) | Install the agent on Kubernetes, Docker, or bare-metal. CPU and off-CPU profiling, NVIDIA GPU profiling (CUDA 12.x+, automatic injection from the UI or env var), AMD GPU profiling (ROCm 7.x+), and inference engines (vLLM, SGLang, Dynamo-Triton, TensorRT-LLM). |
+| [`install-zymtrace-profiler`](zymtrace/skills/install-zymtrace-profiler/) | Install the agent on Kubernetes, Docker, or bare-metal. CPU and off-CPU profiling, NVIDIA GPU profiling (CUDA 12.x+, automatic injection from the UI or env var), AMD GPU profiling (ROCm 7.x+), and inference engines (vLLM, SGLang, Dynamo-Triton, TensorRT-LLM). Turns on GPU straggler detection (NCCL metrics) and model shapes by default at setup. |
 | [`troubleshoot-zymtrace-backend`](zymtrace/skills/troubleshoot-zymtrace-backend/) | Diagnose "no data appearing", license errors, ingest crashes, slow queries, storage issues. |
-| [`troubleshoot-zymtrace-profiler`](zymtrace/skills/troubleshoot-zymtrace-profiler/) | Diagnose agent-side failures: CrashLoopBackOff, OOMKilled, NVML missing, no GPU profiles (NVIDIA or AMD), no off-CPU profiles, PC sampling, license rejected. |
+| [`troubleshoot-zymtrace-profiler`](zymtrace/skills/troubleshoot-zymtrace-profiler/) | Diagnose agent-side failures: CrashLoopBackOff, OOMKilled, NVML missing, no GPU profiles (NVIDIA or AMD), no off-CPU profiles, PC sampling, license rejected, and empty straggler / Models / timeline views. |
 | [`configure-zymtrace-mcp`](zymtrace/skills/configure-zymtrace-mcp/) | Connect Claude Code (or any MCP client) to the zymtrace MCP server so you can analyze profiles with natural-language queries. |
 | [`optimize-cpu-workloads`](zymtrace/skills/optimize-cpu-workloads/) | Analyze CPU performance through the MCP (CPU-only deployments): rank the top consumers (which process/function/pod is hottest, biggest ROI) or drill into a named workload, pull CPU metrics + flamegraph, name the pattern, scope to the user's own code, then apply the fix in the local source (asking for the path if it isn't local) and close with a follow-up. Reads the off-CPU profile when a service is slow but not CPU-bound. No GPU or inference-server framing. |
-| [`optimize-gpu-workloads`](zymtrace/skills/optimize-gpu-workloads/) | Analyze GPU performance (NVIDIA or AMD) through the MCP: read a GPU flamegraph, find the hot kernel, diagnose low GPU saturation, or investigate vLLM/SGLang/Dynamo-Triton/TensorRT-LLM or training. Always cross-checks the matching CPU flamegraph (the bottleneck often hides host-side), rules out the hardware path (GPU Topology) when there's no code-level cause, then applies the fix in the local source and closes with a follow-up. |
+| [`optimize-gpu-workloads`](zymtrace/skills/optimize-gpu-workloads/) | Analyze GPU performance (NVIDIA or AMD) through the MCP: read a GPU flamegraph, find the hot kernel, diagnose low GPU saturation, or investigate vLLM/SGLang/Dynamo-Triton/TensorRT-LLM or training. Correlates the GPU profile with the matching CPU profile (the bottleneck often hides host-side), GPU metrics, GPU topology (NVLink/PCIe matrix, NUMA placement of the profiled processes) and model shapes (TP/PP layout, hot layers' tensor shapes) for the same hosts and window; finds the straggler GPU in multi-GPU jobs (NCCL stragglers, slow collectives, their causes), then applies the fix in the local source and closes with a follow-up. |
+| [`analyze-gpu-timeline`](zymtrace/skills/analyze-gpu-timeline/) | Capture and analyze the GPU execution timeline (NVIDIA): turn on high-resolution profiling for a short, scoped window from the UI or the agent-config API (no restart), then detect repeated launch patterns, idle gaps, cadence, jitter and drift with the MCP timeline tools or the public pattern API (`POST /public/api/v1/projects/{project_id}/timeline/pattern`), and apply the fix. |
 | [`optimize-memory-allocation`](zymtrace/skills/optimize-memory-allocation/) | Analyze **JVM memory allocation profiles** through the MCP: what's allocating the most (bytes/objects), why GC is busy, where churn burns CPU. Java-only (boxing, String churn, collection resize, buffer churn). Names the allocation site, applies the fix, frames impact as GC pause + CPU reclaimed. |
 
 ### Agent
 
 | Agent | What it does |
 |-------|-------------|
-| [`zymtrace-perf-engineer`](zymtrace/agents/zymtrace-perf-engineer.md) | Autonomous, hands-off performance investigation. Ranks the top consumers (which process/app is hottest, biggest ROI) or identifies the named entity (script for Python, container, host, or k8s pod/deployment), pulls its metrics, then the CPU flamegraph (and the GPU flamegraph when it's a GPU workload), then applies the fix in the local source (asking for the path if it isn't local) and closes with a follow-up, all without stopping to confirm each step. Runs several in parallel. Invoke it by name (e.g. "use the zymtrace-perf-engineer to analyze my vLLM GPU workload"). |
+| [`zymtrace-perf-engineer`](zymtrace/agents/zymtrace-perf-engineer.md) | Autonomous, hands-off performance investigation. Ranks the top consumers (which process/app is hottest, biggest ROI) or identifies the named entity (script for Python, container, host, or k8s pod/deployment), pulls its metrics, then the CPU flamegraph (and the GPU flamegraph when it's a GPU workload, plus the straggler check for multi-GPU jobs), then applies the fix in the local source (asking for the path if it isn't local) and closes with a follow-up, all without stopping to confirm each step. It never creates agent-config rules on its own; it proposes them in the recap. Runs several in parallel. Invoke it by name (e.g. "use the zymtrace-perf-engineer to analyze my vLLM GPU workload"). |
 
 
 ## Supported tools
@@ -96,6 +99,8 @@ Describe what you want, and Claude Code routes to the right skill automatically.
 
 Each skill walks you through the decisions, runs the right commands, and verifies the result. You stay in the driver's seat; every change is confirmed with you first.
 
+Skills that work with an existing zymtrace instance check its version against the [changelog](https://docs.zymtrace.com/changelog/) once per session. If you're behind, they read the changelog, tell you what you'd gain, and ask whether you want to upgrade to the latest. They never upgrade without your yes.
+
 ### The agent (hands-off mode)
 
 For an investigation you want to run *unattended*, hand the whole thing to the **`zymtrace-perf-engineer`** agent. Name it in your request:
@@ -117,6 +122,16 @@ zymtrace-vcpu-rate: $0.032/vCPU-hour
 
 The skill checks for that line before falling back to the default, so every cost estimate uses your rate and it stops asking. (You can also tell it your rate mid-session and approve saving it; it writes the same line for you.)
 
+### Upgrade without being asked (optional)
+
+To have the skills start an upgrade to the latest release whenever they find your zymtrace behind, instead of asking first, add this line to `AGENTS.md` or `CLAUDE.md`:
+
+```markdown
+zymtrace-auto-upgrade: on
+```
+
+You still approve the exact `helm upgrade` command before it runs, because upgrades run database migrations. The unattended `zymtrace-perf-engineer` agent never upgrades; it only offers. Remove the line, or set it to `off`, to go back to being asked.
+
 ### See what's installed
 
 Run **`/skills`** and **`/agents`** in any session to see the components with on/off toggles. For the full inventory and per-component token cost, run:
@@ -127,7 +142,7 @@ claude plugin details zymtrace
 
 ```text
 Component inventory
-  Skills (10) optimize-cpu-workloads, optimize-gpu-workloads,
+  Skills (11) optimize-cpu-workloads, optimize-gpu-workloads, analyze-gpu-timeline,
               optimize-memory-allocation, configure-zymtrace-mcp, expose-zymtrace-backend,
               install-zymtrace-backend, install-zymtrace-profiler, troubleshoot-zymtrace-backend,
               troubleshoot-zymtrace-profiler, upgrade-zymtrace-backend

@@ -52,33 +52,33 @@ fi
 
 # ---------------------------------------------------------------------------
 section "Backend connection evidence"
-# Look for either license-validation OR streaming-connection messages in any pod.
-license_ok=0
-stream_ok=0
+# "Enabling features from license" is logged once the backend accepted the agent;
+# "Connecting to ingest at" while it is still trying to reach the gateway.
+accepted=0
+connecting=0
 errors=""
 
 for pod in $(kubectl get pods -n "$NS" -l app.kubernetes.io/component=profiler -o name 2>/dev/null \
             || kubectl get pods -n "$NS" -l app=zymtrace -o name 2>/dev/null); do
-  logs=$(kubectl logs -n "$NS" "$pod" --tail=200 2>/dev/null)
-  if echo "$logs" | grep -qE 'license is valid until|License is valid'; then
-    license_ok=1
+  logs=$(kubectl logs -n "$NS" "$pod" --tail=500 2>/dev/null)
+  if echo "$logs" | grep -q 'Enabling features from license'; then
+    accepted=1
   fi
-  if echo "$logs" | grep -qE 'streaming.*connection|established.*connection'; then
-    stream_ok=1
+  if echo "$logs" | grep -q 'Connecting to ingest at'; then
+    connecting=1
   fi
-  # Common failure patterns
-  pod_errs=$(echo "$logs" | grep -iE 'connection refused|dns lookup failed|no such host|forbidden|unauthorized|invalid.*license|license.*expired' | head -3)
+  # Common failure patterns. "hmac doesn't match" = profiler newer than the backend;
+  # "not allowed to start" = the backend's license check rejected the agent.
+  pod_errs=$(echo "$logs" | grep -iE "connection refused|dns lookup failed|no such host|forbidden|unauthorized|invalid.*license|license.*expired|hmac doesn't match|not allowed to start" | head -3)
   [ -n "$pod_errs" ] && errors="${errors}${pod}:\n${pod_errs}\n"
 done
 
-if [ "$license_ok" = "1" ]; then
-  note "license validated ✓"
-fi
-if [ "$stream_ok" = "1" ]; then
-  note "streaming connection established ✓"
-fi
-if [ "$license_ok" = "0" ] && [ "$stream_ok" = "0" ]; then
-  note "no positive connection signal in logs yet — agents may still be starting (wait 30s and re-run)"
+if [ "$accepted" = "1" ]; then
+  note "backend accepted the agent (Enabling features from license) ✓"
+elif [ "$connecting" = "1" ]; then
+  note "connecting to the gateway, not accepted yet — wait 30s and re-run; if it stays here, check the errors below"
+else
+  note "no connection signal in logs yet — agents may still be starting (wait 30s and re-run)"
 fi
 if [ -n "$errors" ]; then
   note "errors detected:"
@@ -111,12 +111,14 @@ section "Summary"
 helm_status=$(helm status "$RELEASE" -n "$NS" 2>/dev/null | awk -F': ' '/^STATUS:/ {print $2; exit}')
 note "helm release: ${helm_status:-NOT FOUND}"
 note "DaemonSet:    $ready/$desired pods Ready"
-[ "$license_ok" = "1" ] && note "license:      validated ✓" || note "license:      not yet validated"
-[ "$stream_ok" = "1" ]  && note "backend:      streaming connection established ✓" || note "backend:      no streaming connection yet"
+if [ "$accepted" = "1" ]; then note "backend:      accepted the agent ✓"
+elif [ "$connecting" = "1" ]; then note "backend:      connecting, not accepted yet"
+else note "backend:      no connection signal yet"
+fi
 
 echo
 if [ "$helm_status" = "deployed" ] && [ "$ready" = "$desired" ] && [ "$ready" -gt 0 ] \
-   && { [ "$license_ok" = "1" ] || [ "$stream_ok" = "1" ]; } && [ -z "$errors" ]; then
+   && [ "$accepted" = "1" ] && [ -z "$errors" ]; then
   printf '\033[1;32m✓ Profiler is healthy.\033[0m\n'
   printf '  Profiles for every process on every covered node should appear in the UI within ~30s.\n'
   printf '  For GPU profiling, the agent only ships data when workloads set CUDA_INJECTION64_PATH.\n'
@@ -124,6 +126,7 @@ else
   printf '\033[1;31m✗ Issues detected — see sections above.\033[0m\n'
   printf '  Common fixes:\n'
   printf '    - Connection refused / DNS error → wrong -collection-agent target. Check service FQDN.\n'
-  printf '    - License invalid / expired → renew via support@zymtrace.com or check secret reference.\n'
+  printf '    - License invalid / "not allowed to start" → renew via support@zymtrace.com or check secret reference.\n'
+  printf "    - \"hmac doesn't match\" → profiler newer than the backend: upgrade the backend to the latest.\\n"
   printf '    - 0/N Ready → nodeSelector mismatch. Run: kubectl get nodes --show-labels\n'
 fi

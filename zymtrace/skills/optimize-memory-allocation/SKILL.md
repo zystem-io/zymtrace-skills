@@ -1,8 +1,8 @@
 ---
 name: optimize-memory-allocation
 description: |
-  Analyze JVM memory-allocation profiles with zymtrace — find what allocates the most (bytes/objects), why GC is busy, and where allocation churn is burning CPU. **Java/JVM only** — zymtrace memory-allocation profiling is supported for the JVM; non-Java workloads have no allocation profile. The zymtrace MCP pulls the allocation rankings + flamegraph (the allocation dimension); YOU analyze — name the hot allocation sites and the pattern (autoboxing, String churn, collection resizing, large arrays/buffers, per-request object graphs), then recommend AND apply the fix in the user's source (ask for the path if it isn't local) and close with a follow-up. Use when allocation rate / garbage collection is the concern on a Java service, or when a CPU profile turned out allocation/GC-bound (the CPU skill hands off here). **Allocation profiling is opt-in** — if the Java service has no allocation profile yet, this skill enables it first (ask the user for target/sampling/JVMTI inputs; apply via the agent-config MCP or `POST /public/api/v1/agent/config/set`, or a profiler flag), then analyzes; docs: https://docs.zymtrace.com/allocation-profiling. NOT for GPU memory (use optimize-gpu-workloads), NOT for non-JVM CPU work (use optimize-cpu-workloads), and NOT for OOMKilled / crash diagnosis (that's troubleshoot-zymtrace-profiler / troubleshoot-zymtrace-backend).
-  Trigger phrases: "what's allocating the most memory", "analyze the JVM allocation profile", "java/JVM memory allocations", "JVM allocation hot spots", "why is GC so busy/high", "reduce GC pressure", "too much garbage collection", "allocation churn", "what's creating the most objects/garbage", "JVM memory allocation flamegraph", "reduce heap churn", "which Java code allocates the most", "enable/turn on/set up allocation profiling".
+  Analyze JVM memory-allocation profiles with zymtrace (Java only): what allocates the most bytes and objects, why GC is busy, and where allocation churn burns CPU (boxing, String churn, collection resizing, buffers). Turns allocation profiling on if it's off, names the allocation sites, and applies the fix in the user's code. Also where a CPU profile turns out allocation- or GC-bound. Non-Java services → optimize-cpu-workloads; GPU memory → optimize-gpu-workloads; OOMKilled or crashes → the troubleshoot skills.
+  Trigger phrases: "what's allocating the most memory", "analyze the JVM allocation profile", "why is GC so busy", "reduce GC pressure", "allocation churn", "what creates the most garbage", "reduce heap churn", "which Java code allocates the most", "enable allocation profiling".
 ---
 
 # Optimize JVM Memory Allocation
@@ -26,9 +26,10 @@ JVM allocation profiling is **off by default.** Before analyzing, **confirm the 
 - **Sampling interval** — bytes between allocation samples. Default **`16mib`** (production); **`512kib`** for fine-grained at higher overhead.
 - **JVMTI backend** — use JVMTI as the sampling backend? Default **on** where supported.
 
-Apply it one of two ways (per the docs):
-1. **Agent config — no redeploy (preferred).** Set an agent rule via the **agent-config MCP tool** if your client exposes one, else the gateway API **`POST <gateway-url>/public/api/v1/agent/config/set`** — read the exact request body from `<gateway-url>/api-docs/openapi.json` (don't guess field names). This is also the **Settings → Agent Config / Allocation Profiles** page in the UI.
-2. **Profiler startup flag — needs a profiler restart.** `-alloc-profile=<interval>` (env `ZYMTRACE_ALLOC_PROFILE`), e.g. `-alloc-profile=16mib`, plus optional `-use-jvmti` (env `ZYMTRACE_USE_JVMTI`). See [`install-zymtrace-profiler`](../install-zymtrace-profiler/SKILL.md). Use this when editing the profiler launch is easier than a live rule.
+Apply it one of three ways (per the docs), after the user confirms the rule:
+1. **UI — no redeploy (simplest).** **Settings → Agent Config → Allocation Profiles → Add Rule** with the target and interval.
+2. **Agent-config API — no redeploy.** `POST <gateway-url>/public/api/v1/agent/config/set` with an `AllocProfile` (and `UseJvmti`) setting. The call replaces the whole rule list: read it with `GET …/agent/config/get` first, append the rule, and send it back with the same `version`; read the exact body from `<gateway-url>/api-docs/openapi.json`. With auth on, an **HTTP 403** means the token can't change agent config — no service token can today — so use the UI instead. There is no MCP tool for agent config.
+3. **Profiler startup flag — needs a profiler restart.** `-alloc-profile=<interval>` (env `ZYMTRACE_ALLOC_PROFILE`), e.g. `-alloc-profile=16mib`, plus optional `-use-jvmti` (env `ZYMTRACE_USE_JVMTI`). See [`install-zymtrace-profiler`](../install-zymtrace-profiler/SKILL.md). Use this when editing the profiler launch is easier than a live rule.
 
 ## Why allocation matters
 
@@ -38,11 +39,11 @@ Allocation is rarely free: high allocation rate drives **GC frequency and pause 
 
 The MCP pulls the data; you do the analysis. Establish a data path first (pre-flight, in the shared doc), and **confirm allocation profiling is enabled** (above) — if the Java service has no allocation profile yet, enable it and wait for data before continuing.
 
-1. **Rank first if the request is rank-shaped** ("what's allocating the most", "which code creates the most garbage") — use **topentities** / **topfunctions** on the **allocation** dimension (concise rankings), then drill into the top site with `hot_traces`. Rank by **bytes allocated** over the window (show the figure per entry); include host and container names where the data has them. Mark unmodifiable runtime/library allocations (JIT, classloading, framework internals you can't change) non-actionable and drill into the highest user-owned site. See scope-to-own-code/ROI in the shared doc.
+1. **Rank first if the request is rank-shaped** ("what's allocating the most", "which code creates the most garbage") — use **`discover`** / **`top_functions`** with event kind `alloc` (concise rankings), then drill into the top site with `hot_traces`. Rank by **bytes allocated** over the window (show the figure per entry); include host and container names where the data has them. Mark unmodifiable runtime/library allocations (JIT, classloading, framework internals you can't change) non-actionable and drill into the highest user-owned site. See scope-to-own-code/ROI in the shared doc.
 
 2. **Pull allocation-related metrics first, for context.** Allocation rate (bytes/sec), GC time and frequency, heap used / churn — to establish whether GC pressure is actually a problem or allocation is cheap here. Carry these into the recap; they tell you if the fix is worth it.
 
-3. **Pull the allocation call tree** at the named scope (executable / container / pod / host / time range) on the **allocation** dimension — use the **`hot_traces`** MCP tool when available (zymtrace 26.5.1+), else fall back to **`flamegraph`** (see the data-source policy in the shared doc). Read which allocation sites dominate by bytes.
+3. **Pull the allocation call tree** at the named scope (executable / container / pod / host / time range) on the **allocation** dimension — use the **`hot_traces`** MCP tool when available (zymtrace 26.6.0+), else fall back to **`flamegraph`** (see the data-source policy in the shared doc). Read which allocation sites dominate by bytes.
 
 4. **Name the pattern.** The MCP returns raw allocation sites + bytes; naming the dominant pattern is *your* job. Common JVM patterns:
    - **Autoboxing churn** — `Integer.valueOf`, `Long.valueOf`, boxed types in collections / streams (`Map<Integer,…>`, `Collectors.toList()` on a boxed stream).
@@ -81,7 +82,7 @@ The output-template skeleton is in the shared doc. The allocation **Observed Cal
 
 ## Done (allocation-specific, on top of the shared checklist)
 
-- [ ] Allocation profiling confirmed enabled for the Java service; if it wasn't, enabled it (target CEL + sampling interval + JVMTI asked of the user, applied via agent config / `agent/config/set` or profiler flag) and waited for data before analyzing.
+- [ ] Allocation profiling confirmed enabled for the Java service; if it wasn't, enabled it (target CEL + sampling interval + JVMTI asked of the user, applied via the UI, the agent-config API, or the profiler flag) and waited for data before analyzing.
 - [ ] Ranked first when rank-shaped, on the **allocation** dimension by bytes; runtime/library allocations marked non-actionable, the top user-owned site drilled into.
 - [ ] Allocation metrics pulled first (allocation rate, GC time/frequency, heap churn) and carried into the recap — so the fix's worth is established.
 - [ ] Allocation call tree pulled at the named scope; the dominant pattern named (boxing, String churn, collection resize, buffer churn, transient graphs).

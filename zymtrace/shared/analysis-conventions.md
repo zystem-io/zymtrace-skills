@@ -1,7 +1,8 @@
 # Profile Analysis Conventions
 
-Shared discipline for the three optimize skills — [`optimize-cpu-workloads`](../skills/optimize-cpu-workloads/SKILL.md),
-[`optimize-gpu-workloads`](../skills/optimize-gpu-workloads/SKILL.md), and
+Shared discipline for the analysis skills — [`optimize-cpu-workloads`](../skills/optimize-cpu-workloads/SKILL.md),
+[`optimize-gpu-workloads`](../skills/optimize-gpu-workloads/SKILL.md),
+[`analyze-gpu-timeline`](../skills/analyze-gpu-timeline/SKILL.md), and
 [`optimize-memory-allocation`](../skills/optimize-memory-allocation/SKILL.md) — and the
 **zymtrace-perf-engineer** agent. The zymtrace MCP fetches the data (rankings, flamegraphs,
 metrics); **you** do the analysis: name the hot stacks, identify the pattern, recommend the fix,
@@ -34,9 +35,13 @@ All metrics and flamegraphs come from the user's live zymtrace instance:
 - **MCP first** (preferred). Use MCP resources first, then tools as a fallback (per the server's own instructions).
 - **Gateway API as fallback** when the MCP isn't available — read its endpoints from `<gateway-url>/api-docs/openapi.json`; don't guess params.
 
-**Pulling traces — `hot_traces` first.** For the call-tree / flamegraph step on **all three profile types — CPU, GPU, and allocation (ALLOC)** — prefer the **`hot_traces`** MCP tool when it's available; it's present on zymtrace **26.5.1 and above**. Fall back to the **`flamegraph`** MCP tool on older instances or whenever `hot_traces` isn't exposed. Try `hot_traces` first and drop to `flamegraph` if it's absent or errors; don't ask the user which version they run — detect it from the tool list.
+**Pulling traces — `hot_traces` first.** For the call-tree / flamegraph step on **all three profile types — CPU, GPU, and allocation (ALLOC)** — prefer the **`hot_traces`** MCP tool when it's available; it's present on zymtrace **26.6.0 and above**. Fall back to the **`flamegraph`** MCP tool on older instances or whenever `hot_traces` isn't exposed. Try `hot_traces` first and drop to `flamegraph` if it's absent or errors; don't ask the user which version they run — detect it from the tool list.
 
-This tool preference is for the **call-tree / flamegraph** step only. For **ranking** ("which entity/function is hottest"), still use the concise **`topentities`** / **`topfunctions`** tools — `hot_traces` returns full trace data, more than you need to rank. Rank with `top*`, then pull the hot entry's call tree with `hot_traces`.
+This tool preference is for the **call-tree / flamegraph** step only. For **ranking** ("which entity/function is hottest"), use the concise tools — **`discover`** for entities (one row per executable/script with its total weight in cores, bytes or seconds, plus its top hosts, containers, pods and GPUs; with no `expr` it shows where time concentrates overall) and **`top_functions`** for functions. `hot_traces` returns full trace data, more than you need to rank. Rank first, then pull the hot entry's call tree with `hot_traces`. (Older docs and instances call these `topentities` / `topfunctions`; use whichever the MCP lists.)
+
+**Specialized MCP tools come with their own procedure.** Multi-GPU communication: `nccl_stragglers`, `nccl_slow_operations`, `nccl_causes` (procedure in the `nccl_analysis` prompt, resource `prompt://nccl`). High-resolution GPU timeline: `timeline_density`, `timeline_patterns` (procedure in `timeline_analysis`, resource `prompt://timeline`). Read the prompt before the first call. Copy communicator hashes, episode ranges, GPU IDs and project IDs verbatim between calls. An empty or partial result is **"not measured"** — `communicators_evaluated: 0`, GPUs listed without metrics, `first_ms: null` — never "healthy" or "no cause".
+
+**GPU context the MCP doesn't expose yet.** The GPU workflow also reads GPU topology and NUMA placement (`gpu-topology.sh`: the public `host-metadata` endpoint and the internal `analyze` endpoint) and model shapes (`model-shapes.sh`: the internal `models` endpoints) from the gateway API, with the same token as the MCP (`ZYMTRACE_API_TOKEN` or `ZYMTRACE_MCP_TOKEN` in the environment). That's a normal path, like metrics without an MCP metrics tool, not a fallback. The internal endpoints are the UI's own, unversioned API: go through the scripts, read-only. Procedure: [`optimize-gpu-workloads` § The correlated protocol](../skills/optimize-gpu-workloads/SKILL.md#the-correlated-protocol).
 
 **Check existing recommendations early.** zymtrace continuously generates AI recommendations — evidence-backed reports, **one per application** (a set of executables and the hosts or Kubernetes workloads running them), for on-CPU and CUDA profiles. When the MCP exposes a **`recommendations`** tool, call it right after resolving the scope, before profiling — the cause may already be diagnosed:
 
@@ -64,6 +69,8 @@ or Cursor, the equivalent MCP listing):
 - **Connected** → proceed; the MCP is the preferred data path.
 - **Not connected** → route to [`configure-zymtrace-mcp`](../skills/configure-zymtrace-mcp/SKILL.md). It needs the URL: use one the user already gave, otherwise **ask** (*"What's your zymtrace URL? — e.g. `https://zymtrace.your-company.com`"*). Never guess or assume `localhost`. With a URL but no connection, the gateway API for that same instance is the fallback.
 
+**Version check (once per session).** With the URL known, check whether the instance is behind the latest release and, if it is, ask once whether the user wants to upgrade — procedure in [`shared/conventions.md` § Check for a newer zymtrace release](conventions.md#check-for-a-newer-zymtrace-release). Don't hold up the analysis for it; a "no" means don't ask again this session. A tool the task needs that's missing from the MCP (e.g. `nccl_stragglers`, `timeline_patterns`) is a reason to check again.
+
 **Default time range:** last **1 hour** if the user gives none. Use the exact range if they specify one.
 
 ## Which view — CPU or GPU
@@ -74,13 +81,15 @@ Pick the view from the request; **never ask the user "is this CPU or GPU?"** —
 - **No accelerator signal — only an entity named** (a container, deployment, pod, host, process, or just "what's slow / what's hot") → default to the **CPU** workflow ([`optimize-cpu-workloads`](../skills/optimize-cpu-workloads/SKILL.md)). **CPU is the universal baseline:** every profiled entity has a CPU profile; GPU is the special case.
 - **Memory-allocation / GC signal on a Java service** — "what's allocating", "why is GC busy", "reduce heap churn", "JVM memory allocations" → use the **memory-allocation** workflow ([`optimize-memory-allocation`](../skills/optimize-memory-allocation/SKILL.md)), which reads the JVM allocation profile (bytes allocated). **JVM-only** — non-Java workloads have no allocation profile. The CPU workflow also hands off here when a Java service's hot pattern turns out to be allocator/GC frames.
 - **Slow but not CPU-bound** — "slow but CPU is low", "where is it waiting / blocked", latency without a CPU hot spot → stay in the **CPU** workflow and read the **off-CPU** profile (MCP event kind `off_cpu`), per [`optimize-cpu-workloads` § Slow but not CPU-bound](../skills/optimize-cpu-workloads/SKILL.md#slow-but-not-cpu-bound-read-the-off-cpu-profile). Off-CPU time is a different event kind from on-CPU time — never add or compare them.
+- **Multi-GPU signal** — stragglers, a GPU holding the others back, slow collectives / NCCL / all-reduce, a distributed job that got slower → the **GPU** workflow, [§ Multi-GPU jobs](../skills/optimize-gpu-workloads/SKILL.md#multi-gpu-jobs-stragglers-and-slow-collectives).
+- **Order or timing signal** — gaps between kernels or batches, copy/compute overlap, where syncs land, launch cadence, jitter, step-time drift — or a request to enable high-resolution profiling → [`analyze-gpu-timeline`](../skills/analyze-gpu-timeline/SKILL.md). The flamegraph aggregates and can't show gaps; the timeline keeps every event in order.
 
 Then **let the metrics decide.** You pull the entity's metrics first regardless (next steps). If an entity you reached via the CPU default turns out to show real GPU activity (non-trivial GPU utilization / memory), it's a GPU workload — switch to the GPU workflow for the cross-view rather than analyzing GPU work from the CPU side alone.
 
 ## Two request shapes: rank-first vs. drill-down
 
 - **Drill-down** — the user already named a workload ("analyze my training job", "my API service"). Go straight to your skill's protocol.
-- **Rank-first** — the user asks *which* thing is hottest or where the best return is ("which process uses the most CPU", "what's eating my CPU", "biggest ROI", "what should I optimize first"). Start by ranking with the MCP's **topentities** (hottest container/pod/host/process) or **topfunctions** (hottest functions), then drill into the top entry with `hot_traces`. The recap leads with the ranking, then the analysis of the top user-owned entry.
+- **Rank-first** — the user asks *which* thing is hottest or where the best return is ("which process uses the most CPU", "what's eating my CPU", "biggest ROI", "what should I optimize first"). Start by ranking with the MCP's **`discover`** (hottest executable/script, with its hosts, containers and pods) or **`top_functions`** (hottest functions), then drill into the top entry with `hot_traces`. The recap leads with the ranking, then the analysis of the top user-owned entry.
 
 **Always exclude the zymtrace profiler itself** (the zymtrace agent — e.g. `zymtrace-profiler` / the profiler DaemonSet) from rankings entirely. It's the tool doing the measuring; it surfacing near the top almost always just means the cluster is otherwise idle, not that it needs fixing. **Drop it from the table** rather than listing it (note "(zymtrace profiler excluded)" if it would have ranked) — this is a hard skip, distinct from the ❌ reference rows below.
 
@@ -110,6 +119,7 @@ After the recap is shown, **act on the top 🔴 issue's `Fix:`**:
 1. **Find the source locally.** The flamegraph names the hot frame — `<module>.<function>` or `<file>:<line>`. Search the working directory.
    - **Found** → make the edit: the code change for a code-level fix, or the launch config / Helm values / manifest for a flag or env-var fix. Show the diff.
    - **Not found** → **ask the user for the path**: *"I can apply this — where's the source for `<frame>`? (path to the repo / file)"*. Don't guess a path or fabricate a file; wait, then apply.
+   - **Hot frame in a third-party package** (`site-packages`, a venv, a framework entry script such as `trl/scripts/sft.py`, the CUDA/NCCL runtime) → don't patch the library. The user's lever is how they launch or configure it: look for the launch config instead (training or serving config YAML, accelerate / torchrun / DeepSpeed config, Helm values, manifest, Slurm script). The profile's script path, host and container say where it runs; if that's a remote machine with no local checkout, ask for the files or an SSH alias for the host.
 2. **Don't auto-apply a risky or ambiguous change.** When the fix needs a judgment call (a real refactor, a behavior change, a flag with tradeoffs), propose the exact edit and confirm before writing. One-line config/flag fixes you can apply directly and show.
 3. **Always close with a follow-up question.** Never end on the recap alone — apply the next 🔴? run/benchmark to confirm the win? open a PR? drill into a 🟡?
 

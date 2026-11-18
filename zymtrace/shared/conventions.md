@@ -1,6 +1,57 @@
 # zymtrace skill conventions
 
-Cross-skill rules. Every helm-based skill in this repo (install, upgrade, troubleshoot, …) inherits these. Read once; the skill SKILL.md just points back here.
+Cross-skill rules. Every helm-based skill in this repo (install, upgrade, troubleshoot, …) inherits these, and the version check below applies to every skill that works with an existing instance. Read once; the skill SKILL.md just points back here.
+
+---
+
+## Check for a newer zymtrace release
+
+Customers on an old release miss fixes and features the skills rely on. **Once per session**, the first time a skill works with an existing zymtrace instance (analysis, MCP setup, troubleshooting, profiler install, exposure), check its version against the changelog. Check again whenever a tool or feature the task needs turns out to be missing. Skip it in `install-zymtrace-backend` (a fresh install takes the latest) and `upgrade-zymtrace-backend` (it resolves versions itself).
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh <gateway-url>
+```
+
+`<gateway-url>` is the zymtrace URL the user gave, or the MCP URL without `/mcp` (`claude mcp list | grep -i zymtrace`; in Codex or Cursor, the MCP listing). The script reads the instance version from `<gateway-url>/api-docs/openapi.json` (no token needed), falls back to the backend Helm release, and compares it with the newest release on <https://docs.zymtrace.com/changelog/>.
+
+| `status:` | Do |
+|---|---|
+| `outdated` | Before asking, **read the changelog** for every release in `behind:` (<https://docs.zymtrace.com/changelog/>; `notes:` links to the oldest one) and pick the 2–4 changes that matter to this user: a fix for what they're troubleshooting, a feature the current task needs (table below), then the Major items. Cite the version of each; don't paraphrase beyond what the entry says. Then ask once: *"Your zymtrace is on 26.10.1; the latest is 26.11.0 (3 releases behind). Worth having: … Want to upgrade to 26.11.0?"* **Yes** → [`upgrade-zymtrace-backend`](../skills/upgrade-zymtrace-backend/SKILL.md) to the latest, then the profilers to the latest too; Docker Compose installs follow <https://docs.zymtrace.com/install/backend/helm-docker>. **No** → carry on and don't ask again this session. |
+| `up-to-date`, `newer` | Say nothing about the backend. |
+| `unknown` | Don't block; carry on. Mention it only if a feature the task needs is missing. |
+
+**The upgrade target is always the latest release** — for the backend and for every profiler, never an intermediate version. A profiler up to **3 releases** behind the backend still works, which decides how urgent its upgrade is, not where it goes. The script prints one `profiler:` line per profiler Helm release in the current kube context:
+
+| `profiler:` state | Do |
+|---|---|
+| `latest` | Nothing. |
+| `same as the backend; upgrade both to …` | Covered by the backend offer above: upgrade the backend, then this profiler, to the latest. |
+| `… behind the backend, still works; upgrade to …` | Recommend upgrading it to the latest; not urgent. |
+| `… behind the backend, too far; upgrade to …` | Ask once to upgrade it to the latest ([`install-zymtrace-profiler`](../skills/install-zymtrace-profiler/SKILL.md), same `helm upgrade --install` flow). More than 3 releases behind isn't expected to work. |
+| `newer than the backend; upgrade the backend to …` | Upgrade the backend to the latest. |
+
+Profilers installed with Docker or as a binary don't show up there; ask the user, or have them check **Settings → Profiler Inventory** in the UI, which lists each agent's version.
+
+Never upgrade without the user's yes. The unattended **zymtrace-perf-engineer** doesn't stop to ask: it puts the upgrade offer into its closing question.
+
+### Opt-in: upgrade without being asked
+
+Users can opt in with a `zymtrace-auto-upgrade: on` line in the repo's agent-instructions file (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex or Cursor). Check that file for it before asking. With it on and `status: outdated`:
+
+- **Don't ask "want to upgrade?"** Say *"Auto-upgrade is on: upgrading 26.10.1 → 26.11.0"* with the same changelog highlights, and go into [`upgrade-zymtrace-backend`](../skills/upgrade-zymtrace-backend/SKILL.md) to the latest, then the profilers to the latest.
+- **Keep the one go-ahead.** The upgrade still shows the exact `helm upgrade` command and waits for the user's confirmation (its Step 4). The opt-in skips the question, not the confirmation: upgrades run database migrations.
+- **Timing.** Troubleshooting, install and exposure skills start the upgrade right away; analysis skills finish the recap and fix first.
+- **Never from the unattended agent.** It can't get the go-ahead, so it still only offers the upgrade in its closing question.
+
+When a user says yes to an upgrade and has no such line, offer once to save it: *"Want me to start upgrades automatically next time? I'd add `zymtrace-auto-upgrade: on` to CLAUDE.md."* (Claude Code; `AGENTS.md` in Codex or Cursor — the same file you checked.) Write the line only on a yes. Turning it off: remove the line or set it to `off`.
+
+| Feature the skills use | Since |
+|---|---|
+| `hot_traces` MCP tool | 26.6.0 |
+| High-resolution profiling and the GPU timeline | 26.7.2 |
+| `timeline_patterns` MCP tool | 26.9.4 |
+| GPU Straggler Detector (NCCL tools), model shapes | 26.10.3 |
+| Public timeline pattern API (`POST /projects/{id}/timeline/pattern`) | 26.11.0 |
 
 ---
 

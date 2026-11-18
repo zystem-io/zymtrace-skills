@@ -104,19 +104,21 @@ else
 
   # Signal extraction
   echo ""
-  if echo "$LOGS" | grep -qE 'license is valid until'; then
-    ok "license validated"
-  fi
-  if echo "$LOGS" | grep -qE 'streaming.*connection|established.*connection'; then
-    ok "streaming connection to backend established"
+  if echo "$LOGS" | grep -q 'Enabling features from license'; then
+    ok "backend accepted the agent"
+  elif echo "$LOGS" | grep -q 'Connecting to ingest at'; then
+    warn "connecting to the gateway, not accepted yet"
   fi
   if echo "$LOGS" | grep -qE 'Intercepted.*zymtrace.*implant'; then
     ok "GPU implant intercepted (CUDA workload is being profiled)"
   fi
 
-  if echo "$LOGS" | grep -qiE 'license.*(expired|invalid)|forbidden|unauthorized'; then
+  if echo "$LOGS" | grep -qiE 'license.*(expired|invalid)|forbidden|unauthorized|not allowed to start'; then
     err "license / auth error → § License rejected"
-    echo "$LOGS" | grep -iE 'license.*(expired|invalid)|forbidden|unauthorized' | head -3 | sed 's/^/      /'
+    echo "$LOGS" | grep -iE 'license.*(expired|invalid)|forbidden|unauthorized|not allowed to start' | head -3 | sed 's/^/      /'
+  fi
+  if echo "$LOGS" | grep -q "hmac doesn't match"; then
+    err "profiler is newer than the backend → upgrade the backend to the latest"
   fi
   if echo "$LOGS" | grep -qiE 'connection refused|dns lookup failed|no such host'; then
     err "cannot reach backend → wrong --collection-agent target"

@@ -306,7 +306,7 @@ For any of 1–4 → hand off to the [`expose-zymtrace-backend`](../expose-zymtr
 
 ### Step 9: Hand off to profiler install
 
-The backend has no data until a profiler agent reports to it. Suggest the `install-zymtrace-profiler` skill next.
+The backend has no data until a profiler agent reports to it. Suggest the `install-zymtrace-profiler` skill next. For GPU fleets, recommend turning on **Settings → Feature Flags → Models** now and enabling straggler detection and model shapes on the GPU workloads during the profiler setup.
 
 ---
 

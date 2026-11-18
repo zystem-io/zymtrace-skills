@@ -44,6 +44,8 @@ Resolve **two** sets of (namespace, release) — backend AND profiler — since 
 
 > If the profiler release isn't installed at all, that explains "no data". Route to `install-zymtrace-profiler`.
 
+**Version check (once per session).** Run `bash ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-zymtrace-backend/scripts/check-version.sh <gateway-url>` (no URL → it reads the backend Helm release). If it reports `status: outdated`, say so early and ask once whether to upgrade — the fix may already be in a newer release (its `notes:` link). Keep diagnosing either way. Details: [`shared/conventions.md` § Check for a newer zymtrace release](../../shared/conventions.md#check-for-a-newer-zymtrace-release).
+
 ## Symptom router
 
 Ask which symptom matches. Don't guess — the diagnostics differ.
@@ -83,9 +85,9 @@ kubectl logs -n <profiler-NS> "$POD" --tail=100
 ```
 
 Look for:
-- `Your license is valid until ...` — agent reached the backend, license accepted.
-- `streaming connection established` — agent is sending profiles.
-- `buffers_processed` or `bytes_sent` counters incrementing — actual data leaving the agent.
+- `Enabling features from license: …` — the backend accepted the agent (it's connected and licensed).
+- `Connecting to ingest at <host:port>` with nothing after it — the agent is still trying to reach the gateway.
+- `hmac doesn't match. Are you running a newer profiler against an old backend?` — version skew: upgrade the backend to the latest.
 
 If you see `connection refused`, `dns lookup failed`, or `no such host` → the `--collection-agent` target is wrong. Fix the values file (`profiler.args[0]`) and re-apply with `helm upgrade --install ... --reset-then-reuse-values --atomic`.
 
@@ -124,7 +126,7 @@ kubectl logs -n <backend-NS> deployment/<PREFIX>-ingest --tail=100 --all-contain
 
 Look for:
 - `Your license is valid until ...` — backend accepted the license.
-- Periodic `received profile` / `processed batch` lines (or quiet logs with no errors).
+- Otherwise quiet logs with no errors are normal.
 
 Red flags:
 - `clickhouse: connection refused` / `clickhouse: dial tcp` → ClickHouse pod down or unreachable (Step 4 will tell you which).
